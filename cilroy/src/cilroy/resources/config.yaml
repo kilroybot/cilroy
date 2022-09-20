@@ -1,0 +1,8 @@
+controllerParams:
+  faceHost: localhost
+  facePort: 10000
+  moduleHost: localhost
+  modulePort: 11000
+serverParams:
+  host: localhost
+  port: 12000
