@@ -4,9 +4,10 @@
 
 kilroy controller 🎛️
 
-[![Multiplatform tests](https://github.com/kilroybot/cilroy/actions/workflows/test-multiplatform.yml/badge.svg)](https://github.com/kilroybot/cilroy/actions/workflows/test-multiplatform.yml)
-[![Docker tests](https://github.com/kilroybot/cilroy/actions/workflows/test-docker.yml/badge.svg)](https://github.com/kilroybot/cilroy/actions/workflows/test-docker.yml)
-[![Docs](https://github.com/kilroybot/cilroy/actions/workflows/docs.yml/badge.svg)](https://github.com/kilroybot/cilroy/actions/workflows/docs.yml)
+[![Lint](https://github.com/kilroybot/cilroy/actions/workflows/lint.yaml/badge.svg)](https://github.com/kilroybot/cilroy/actions/workflows/lint.yaml)
+[![Multiplatform tests](https://github.com/kilroybot/cilroy/actions/workflows/test-multiplatform.yaml/badge.svg)](https://github.com/kilroybot/cilroy/actions/workflows/test-multiplatform.yaml)
+[![Docker tests](https://github.com/kilroybot/cilroy/actions/workflows/test-docker.yaml/badge.svg)](https://github.com/kilroybot/cilroy/actions/workflows/test-docker.yaml)
+[![Docs](https://github.com/kilroybot/cilroy/actions/workflows/docs.yaml/badge.svg)](https://github.com/kilroybot/cilroy/actions/workflows/docs.yaml)
 
 </div>
 

@@ -1,8 +1,9 @@
-controllerParams:
-  faceHost: localhost
-  facePort: 10000
-  moduleHost: localhost
-  modulePort: 11000
-serverParams:
-  host: localhost
+# default configuration
+controller:
+  face_host: localhost
+  face_port: 10000
+  module_host: localhost
+  module_port: 11000
+server:
+  host: "0.0.0.0"
   port: 12000

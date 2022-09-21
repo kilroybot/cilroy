@@ -6,44 +6,23 @@ This module provides basic CLI entrypoint.
 import asyncio
 import logging
 from asyncio import FIRST_EXCEPTION
-from enum import Enum
-from logging import Logger
 from pathlib import Path
-from typing import Dict, Optional
+from typing import List, Optional
 
 import typer
-from platformdirs import user_cache_dir
 from typer import FileText
 
-from cilroy.config import get_config
+from cilroy import log
+from cilroy.config import Config, get_config
 from cilroy.controller import CilroyController
 from cilroy.server import CilroyServer
 
 cli = typer.Typer()  # this is actually callable and thus can be an entry point
 
-DEFAULT_STATE_DIRECTORY = (
-    Path(user_cache_dir("kilroybot")) / "cilroy" / "state"
-)
+logger = logging.getLogger(__name__)
 
 
-class Verbosity(str, Enum):
-    DEBUG = "DEBUG"
-    INFO = "INFO"
-    WARNING = "WARNING"
-    ERROR = "ERROR"
-    CRITICAL = "CRITICAL"
-
-
-def get_logger(verbosity: Verbosity) -> Logger:
-    logging.basicConfig()
-    logger = logging.getLogger("cilroy")
-    logger.setLevel(verbosity.value)
-    return logger
-
-
-async def load_or_init(
-    controller: CilroyController, state_dir: Path, logger: Logger
-) -> None:
+async def load_or_init(controller: CilroyController, state_dir: Path) -> None:
     if not state_dir.exists() or not any(state_dir.iterdir()):
         logger.info("Initializing controller...")
         await controller.init()
@@ -64,15 +43,13 @@ async def load_or_init(
         logger.info("Initialization complete.")
 
 
-async def run(config: Dict, logger: Logger, state_dir: Path) -> None:
+async def run(config: Config) -> None:
 
-    face = await CilroyController.build(**config.get("controllerParams", {}))
+    face = await CilroyController.build(**config.controller.dict())
     server = CilroyServer(face, logger)
 
-    server_task = asyncio.create_task(
-        server.run(**config.get("serverParams", {}))
-    )
-    init_task = asyncio.create_task(load_or_init(face, state_dir, logger))
+    server_task = asyncio.create_task(server.run(**config.server.dict()))
+    init_task = asyncio.create_task(load_or_init(face, config.state_directory))
 
     tasks = [server_task, init_task]
 
@@ -97,7 +74,7 @@ async def run(config: Dict, logger: Logger, state_dir: Path) -> None:
         and init_task.exception() is None
     ):
         logger.info("Saving state...")
-        await face.save(state_dir)
+        await face.save(config.state_directory)
 
         logger.info("Cleaning up...")
         await face.cleanup()
@@ -105,27 +82,29 @@ async def run(config: Dict, logger: Logger, state_dir: Path) -> None:
 
 @cli.command()
 def main(
-    config: Optional[FileText] = typer.Option(
-        None, "--config", "-c", dir_okay=False, help="Configuration file"
+    config_file: Optional[FileText] = typer.Option(
+        None, "--config-file", "-C", dir_okay=False, help="Configuration file."
     ),
-    verbosity: Verbosity = typer.Option(
+    config: Optional[List[str]] = typer.Option(
+        None, "--config", "-c", help="Configuration entries."
+    ),
+    verbosity: log.Verbosity = typer.Option(
         "INFO", "--verbosity", "-v", help="Verbosity level."
-    ),
-    state_directory: Optional[Path] = typer.Option(
-        DEFAULT_STATE_DIRECTORY,
-        "--state-directory",
-        "-s",
-        file_okay=False,
-        writable=True,
-        help="Path to state directory.",
     ),
 ) -> None:
     """Command line interface for cilroy."""
 
-    config = get_config(config)
-    logger = get_logger(verbosity)
+    log.configure(verbosity)
 
-    asyncio.run(run(config, logger, state_directory))
+    logger.info("Loading config...")
+    try:
+        config = get_config(config_file, config)
+    except ValueError as e:
+        logger.error("Failed to parse config!", exc_info=e)
+        raise typer.Exit(1)
+    logger.info("Config loaded!")
+
+    asyncio.run(run(config))
 
 
 if __name__ == "__main__":
