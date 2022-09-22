@@ -392,9 +392,9 @@ class CilroyControllerDelegatedBase(CilroyControllerBase):
         async for config in service.watch_config():
             yield config
 
-    async def set_face_config(self, config: Dict[str, Any]) -> None:
+    async def set_face_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
         async with self.state.write_lock() as state:
-            await state.face_service.set_config(config)
+            return await state.face_service.set_config(config)
 
     async def get_module_config_schema(self) -> JSONSchema:
         async with self.state.read_lock() as state:
@@ -410,9 +410,11 @@ class CilroyControllerDelegatedBase(CilroyControllerBase):
         async for config in service.watch_config():
             yield config
 
-    async def set_module_config(self, config: Dict[str, Any]) -> None:
+    async def set_module_config(
+        self, config: Dict[str, Any]
+    ) -> Dict[str, Any]:
         async with self.state.write_lock() as state:
-            await state.module_service.set_config(config)
+            return await state.module_service.set_config(config)
 
 
 class CilroyController(CilroyControllerDelegatedBase):
