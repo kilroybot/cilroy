@@ -431,6 +431,8 @@ class CilroyController(CilroyControllerDelegatedBase):
         epoch = 0
 
         while True:
+            logger.info(f"Offline training: Epoch {epoch}.")
+
             async with self.state.read_lock() as state:
                 max_epochs = state.offline.max_epochs
                 batch_size = state.offline.batch_size
@@ -439,12 +441,21 @@ class CilroyController(CilroyControllerDelegatedBase):
             if max_epochs is not None and epoch >= max_epochs:
                 break
 
+            n_batch = 0
+
             async for batch in batches(posts, batch_size):
+                logger.info(
+                    f"Offline training: Epoch {epoch}, batch {n_batch}."
+                )
                 await service.fit_posts(batch)
                 await service.step()
+                n_batch += 1
+
             epoch += 1
 
     async def _train_offline(self) -> None:
+        logger.info("Offline training started.")
+
         async def map_posts(
             _posts: AsyncIterable[Tuple[UUID, Dict, float]]
         ) -> AsyncIterable[Tuple[Dict, float]]:
@@ -466,10 +477,12 @@ class CilroyController(CilroyControllerDelegatedBase):
             await state.training_status.set(TrainingStatus.IDLE)
             state.training_task = None
 
+        logger.info("Offline training finished.")
+
     async def train_offline(self) -> None:
         async with self.state.write_lock() as state:
             if state.training_task is not None:
-                raise RuntimeError("Training is already in progress")
+                raise RuntimeError("Training is already in progress.")
             await state.training_status.set(TrainingStatus.OFFLINE)
             state.training_task = asyncio.create_task(self._train_offline())
 
@@ -482,10 +495,18 @@ class CilroyController(CilroyControllerDelegatedBase):
 
         async for _ in post_scheduler.wait():
             async with lock:
+                logger.info("Online training: Creating new post...")
+
                 module_post_id, post = await anext(module_service.generate())
                 face_post_id = await face_service.post(post)
                 async with self.state.write_lock() as state:
                     state.online.ids_cache[face_post_id] = module_post_id
+
+                logger.info(
+                    f"Online training: "
+                    f"New post with module-side id {str(module_post_id)} and "
+                    f"face-side id {str(face_post_id)}."
+                )
 
     async def _train_online_fit_scores(
         self, scores: Dict[UUID, float]
@@ -514,6 +535,7 @@ class CilroyController(CilroyControllerDelegatedBase):
 
         async for _ in score_scheduler.wait():
             async with lock:
+                logger.info("Online training: Scoring posts...")
 
                 async with self.state.read_lock() as state:
                     post_ids = list(state.online.ids_cache.keys())
@@ -528,12 +550,18 @@ class CilroyController(CilroyControllerDelegatedBase):
                         for post_id, score in zip(post_ids, scores)
                     }
 
+                logger.info("Online training: Fitting scores...")
+
                 await self._train_online_fit_scores(scores)
 
                 async with self.state.write_lock() as state:
                     state.online.ids_cache.clear()
 
+                logger.info("Online training: Scores fitted.")
+
     async def _train_online(self) -> None:
+        logger.info("Online training started.")
+
         tasks = [
             asyncio.create_task(self._train_online_post_loop()),
             asyncio.create_task(self._train_online_score_loop()),
@@ -548,10 +576,12 @@ class CilroyController(CilroyControllerDelegatedBase):
             await state.training_status.set(TrainingStatus.IDLE)
             state.training_task = None
 
+        logger.info("Online training finished.")
+
     async def train_online(self) -> None:
         async with self.state.write_lock() as state:
             if state.training_task is not None:
-                raise RuntimeError("Training is already in progress")
+                raise RuntimeError("Training is already in progress.")
             await state.training_status.set(TrainingStatus.ONLINE)
             state.training_task = asyncio.create_task(self._train_online())
 
@@ -567,6 +597,7 @@ class CilroyController(CilroyControllerDelegatedBase):
                     logger.warning("Training task failed.", exc_info=e)
                 state.training_task = None
                 await state.training_status.set(TrainingStatus.IDLE)
+                logger.info("Training stopped.")
 
     async def get_module_metrics_config(self) -> List[MetricConfig]:
         async with self.state.read_lock() as state:
