@@ -1,4 +1,5 @@
 import asyncio
+from asyncio import Lock
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, MutableMapping, Optional, Tuple
@@ -32,6 +33,7 @@ class OnlineState:
     score_schedulers_params: Dict[str, Dict[str, Any]]
     iterations: int
     batch_size: Optional[int]
+    lock: Lock
 
 
 @dataclass

@@ -12,9 +12,5 @@ class PostScheduler(Categorizable, ABC):
         return normalize(name.removesuffix("PostScheduler"))
 
     @abstractmethod
-    def run(
-        self,
-        generate: Callable[[], Awaitable[Tuple[UUID, Dict]]],
-        post: Callable[[Dict], Awaitable[UUID]],
-    ) -> AsyncIterable[Tuple[UUID, UUID]]:
+    def wait(self) -> AsyncIterable[None]:
         pass
