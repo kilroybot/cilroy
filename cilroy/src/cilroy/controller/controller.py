@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from abc import ABC
 from asyncio import Lock
 from datetime import datetime
@@ -50,6 +51,8 @@ from cilroy.posting import PostScheduler
 from cilroy.scoring import ScoreScheduler
 from cilroy.status import TrainingStatus
 from cilroy.utils import CachingAsyncIterable, batches
+
+logger = logging.getLogger(__name__)
 
 
 class CilroyControllerBase(Configurable[State], ABC):
@@ -535,7 +538,11 @@ class CilroyController(CilroyControllerDelegatedBase):
             asyncio.create_task(self._train_online_post_loop()),
             asyncio.create_task(self._train_online_score_loop()),
         ]
-        await asyncio.gather(*tasks)
+        try:
+            await asyncio.gather(*tasks)
+        finally:
+            for task in tasks:
+                task.cancel()
 
         async with self.state.write_lock() as state:
             await state.training_status.set(TrainingStatus.IDLE)
@@ -556,6 +563,8 @@ class CilroyController(CilroyControllerDelegatedBase):
                     await state.training_task
                 except asyncio.CancelledError:
                     pass
+                except Exception as e:
+                    logger.warning("Training task failed.", exc_info=e)
                 state.training_task = None
                 await state.training_status.set(TrainingStatus.IDLE)
 
