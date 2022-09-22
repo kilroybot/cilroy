@@ -19,9 +19,5 @@ class ScoreScheduler(Categorizable, ABC):
         return normalize(name.removesuffix("ScoreScheduler"))
 
     @abstractmethod
-    def run(
-        self,
-        get_ids: Callable[[], Awaitable[Collection[UUID]]],
-        score: Callable[[UUID], Awaitable[float]],
-    ) -> AsyncIterable[Dict[UUID, float]]:
+    def wait(self) -> AsyncIterable[None]:
         pass

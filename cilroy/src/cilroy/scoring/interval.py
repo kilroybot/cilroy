@@ -1,10 +1,9 @@
 import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import AsyncIterable, Awaitable, Callable, Collection, Dict
-from uuid import UUID
+from typing import Any, AsyncIterable, Awaitable, Callable, Dict
 
-from kilroy_server_py_utils import Configurable
+from kilroy_server_py_utils import Configurable, Parameter, classproperty
 
 from cilroy.models import SerializableState
 from cilroy.scoring import ScoreScheduler
@@ -17,6 +16,44 @@ class State(SerializableState):
 
 
 class IntervalScoreScheduler(ScoreScheduler, Configurable[State]):
+    class BaseParameter(Parameter[State, str]):
+        async def _get(self, state: State) -> str:
+            return state.base.isoformat()
+
+        async def _set(
+            self, state: State, value: str
+        ) -> Callable[[], Awaitable]:
+            original_value = state.base
+
+            async def undo():
+                state.base = original_value
+
+            state.base = datetime.fromisoformat(value)
+            return undo
+
+        @classproperty
+        def schema(cls) -> Dict[str, Any]:
+            return {"type": "string", "format": "date-time"}
+
+    class IntervalParameter(Parameter[State, float]):
+        async def _get(self, state: State) -> float:
+            return state.interval.total_seconds()
+
+        async def _set(
+            self, state: State, value: float
+        ) -> Callable[[], Awaitable]:
+            original_value = state.interval
+
+            async def undo():
+                state.interval = original_value
+
+            state.interval = timedelta(seconds=value)
+            return undo
+
+        @classproperty
+        def schema(cls) -> Dict[str, Any]:
+            return {"type": "number", "minimum": 0}
+
     @classmethod
     async def _save_state(cls, state: State, directory: Path) -> None:
         with open(directory / "state.json", "w") as f:
@@ -26,17 +63,10 @@ class IntervalScoreScheduler(ScoreScheduler, Configurable[State]):
         with open(directory / "state.json", "r") as f:
             return State.parse_raw(f.read())
 
-    async def run(
-        self,
-        get_ids: Callable[[], Awaitable[Collection[UUID]]],
-        score: Callable[[UUID], Awaitable[float]],
-    ) -> AsyncIterable[Dict[UUID, float]]:
+    async def wait(self) -> AsyncIterable[None]:
         while True:
             async with self.state.read_lock() as state:
                 score_time = next_time(state.base, state.interval)
 
             await asyncio.sleep(seconds_until(score_time))
-
-            ids = await get_ids()
-            scores = {post_id: await score(post_id) for post_id in ids}
-            yield scores
+            yield

@@ -1,6 +1,7 @@
 import asyncio
 import json
 from abc import ABC
+from asyncio import Lock
 from datetime import datetime
 from functools import partial
 from pathlib import Path
@@ -105,6 +106,7 @@ class CilroyControllerBase(Configurable[State], ABC):
             score_schedulers_params=params.score_schedulers_params,
             iterations=params.iterations,
             batch_size=params.batch_size,
+            lock=Lock(),
         )
 
     @staticmethod
@@ -302,6 +304,7 @@ class CilroyControllerBase(Configurable[State], ABC):
             score_schedulers_params=state_dict["score_schedulers_params"],
             iterations=state_dict["iterations"],
             batch_size=state_dict["batch_size"],
+            lock=Lock(),
         )
 
     async def _load_saved_state(self, directory: Path) -> State:
@@ -466,23 +469,18 @@ class CilroyController(CilroyControllerDelegatedBase):
             state.training_task = asyncio.create_task(self._train_offline())
 
     async def _train_online_post_loop(self) -> None:
-        async def generate() -> Tuple[UUID, Dict]:
-            async with self.state.read_lock() as state:
-                service = state.module_service
-            return await anext(service.generate())
-
-        async def post(pst: Dict) -> UUID:
-            async with self.state.read_lock() as state:
-                service = state.face_service
-            return await service.post(pst)
-
         async with self.state.read_lock() as state:
+            module_service = state.module_service
+            face_service = state.face_service
             post_scheduler = state.online.post_scheduler
+            lock = state.online.lock
 
-        async for ids in post_scheduler.run(generate, post):
-            module_post_id, face_post_id = ids
-            async with self.state.write_lock() as state:
-                state.online.ids_cache[face_post_id] = module_post_id
+        async for _ in post_scheduler.wait():
+            async with lock:
+                module_post_id, post = await anext(module_service.generate())
+                face_post_id = await face_service.post(post)
+                async with self.state.write_lock() as state:
+                    state.online.ids_cache[face_post_id] = module_post_id
 
     async def _train_online_fit_scores(
         self, scores: Dict[UUID, float]
@@ -504,26 +502,31 @@ class CilroyController(CilroyControllerDelegatedBase):
             iteration += 1
 
     async def _train_online_score_loop(self) -> None:
-        async def get_ids() -> Set[UUID]:
-            async with self.state.read_lock() as state:
-                return set(state.online.ids_cache.keys())
-
-        async def score(post_id: UUID) -> float:
-            async with self.state.read_lock() as state:
-                service = state.face_service
-            return await service.score(post_id)
-
         async with self.state.read_lock() as state:
+            face_service = state.face_service
             score_scheduler = state.online.score_scheduler
+            lock = state.online.lock
 
-        async for scores in score_scheduler.run(get_ids, score):
-            async with self.state.write_lock() as state:
-                scores = {
-                    state.online.ids_cache.pop(post_id): score
-                    for post_id, score in scores.items()
-                }
+        async for _ in score_scheduler.wait():
+            async with lock:
 
-            await self._train_online_fit_scores(scores)
+                async with self.state.read_lock() as state:
+                    post_ids = list(state.online.ids_cache.keys())
+
+                scores = await asyncio.gather(
+                    *[face_service.score(post_id) for post_id in post_ids]
+                )
+
+                async with self.state.read_lock() as state:
+                    scores = {
+                        state.online.ids_cache.get(post_id): score
+                        for post_id, score in zip(post_ids, scores)
+                    }
+
+                await self._train_online_fit_scores(scores)
+
+                async with self.state.write_lock() as state:
+                    state.online.ids_cache.clear()
 
     async def _train_online(self) -> None:
         tasks = [
