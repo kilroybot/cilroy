@@ -307,12 +307,38 @@ class GetModuleMetricsConfigResponse(betterproto.Message):
 
 
 @dataclass(eq=False, repr=False)
+class MetricData(betterproto.Message):
+    metric_id: str = betterproto.string_field(1)
+    dataset_id: int = betterproto.uint64_field(2)
+    data: str = betterproto.string_field(3)
+
+
+@dataclass(eq=False, repr=False)
+class GetModuleMetricsRequest(betterproto.Message):
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class GetModuleMetricsResponse(betterproto.Message):
+    metrics: List["MetricData"] = betterproto.message_field(1)
+
+
+@dataclass(eq=False, repr=False)
 class WatchModuleMetricsRequest(betterproto.Message):
     pass
 
 
 @dataclass(eq=False, repr=False)
 class WatchModuleMetricsResponse(betterproto.Message):
-    metric_id: str = betterproto.string_field(1)
-    dataset_id: int = betterproto.uint64_field(2)
-    data: str = betterproto.string_field(3)
+    metric: "MetricData" = betterproto.message_field(1)
+
+
+@dataclass(eq=False, repr=False)
+class WatchAllRequest(betterproto.Message):
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class WatchAllResponse(betterproto.Message):
+    method: str = betterproto.string_field(1)
+    message: str = betterproto.string_field(2)

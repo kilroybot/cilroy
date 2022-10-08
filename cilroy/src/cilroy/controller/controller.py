@@ -125,6 +125,7 @@ class CilroyControllerBase(Configurable[State], ABC):
             online=await self._build_online_state(params.online),
             training_task=None,
             training_status=await self._build_training_status(),
+            module_metrics=[],
         )
 
     @staticmethod
@@ -217,6 +218,14 @@ class CilroyControllerBase(Configurable[State], ABC):
         state_dict = await cls._create_online_state_dict(state)
         await cls._save_state_dict(directory, state_dict)
 
+    @staticmethod
+    async def _save_module_metrics(
+        metrics: List[MetricData], directory: Path
+    ) -> None:
+        serialized = [json.loads(metric.json()) for metric in metrics]
+        with open(directory / "metrics.json", "w") as f:
+            json.dump([metric for metric in serialized], f)
+
     @classmethod
     async def _save_state(cls, state: State, directory: Path) -> None:
         offline_directory = directory / "offline"
@@ -226,6 +235,10 @@ class CilroyControllerBase(Configurable[State], ABC):
         online_directory = directory / "online"
         online_directory.mkdir(parents=True, exist_ok=True)
         await cls._save_online_state(state.online, online_directory)
+
+        metrics_directory = directory / "metrics"
+        metrics_directory.mkdir(parents=True, exist_ok=True)
+        await cls._save_module_metrics(state.module_metrics, metrics_directory)
 
     @staticmethod
     async def _load_state_dict(directory: Path) -> Dict[str, Any]:
@@ -310,6 +323,12 @@ class CilroyControllerBase(Configurable[State], ABC):
             lock=Lock(),
         )
 
+    @staticmethod
+    async def _load_module_metrics(directory: Path) -> List[MetricData]:
+        with open(directory / "metrics.json", "r") as f:
+            serialized = json.load(f)
+        return [MetricData.parse_obj(metric) for metric in serialized]
+
     async def _load_saved_state(self, directory: Path) -> State:
         params = Params(**self._kwargs)
         return State(
@@ -323,6 +342,9 @@ class CilroyControllerBase(Configurable[State], ABC):
             ),
             training_task=None,
             training_status=await self._build_training_status(),
+            module_metrics=await self._load_module_metrics(
+                directory / "metrics"
+            ),
         )
 
     @classproperty
@@ -603,7 +625,14 @@ class CilroyController(CilroyControllerDelegatedBase):
         async with self.state.read_lock() as state:
             return await state.module_service.get_metrics_config()
 
+    async def get_module_metrics(self) -> List[MetricData]:
+        async with self.state.read_lock() as state:
+            return state.module_metrics
+
     async def watch_module_metrics(self) -> AsyncIterator[MetricData]:
-        state = await self.state.value.fetch()
-        async for metric in state.module_service.watch_metrics():
+        async with self.state.read_lock() as state:
+            service = state.module_service
+        async for metric in service.watch_metrics():
+            async with self.state.write_lock() as state:
+                state.module_metrics.append(metric)
             yield metric
