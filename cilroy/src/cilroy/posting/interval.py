@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, AsyncIterable, Awaitable, Callable, Dict
 
+from dateutil.parser import isoparse
 from kilroy_server_py_utils import Configurable, Parameter, classproperty
 
 from cilroy.models import SerializableState
@@ -18,7 +19,7 @@ class State(SerializableState):
 class IntervalPostScheduler(PostScheduler, Configurable[State]):
     class BaseParameter(Parameter[State, str]):
         async def _get(self, state: State) -> str:
-            return state.base.isoformat()
+            return state.base.isoformat().replace("+00:00", "Z")
 
         async def _set(
             self, state: State, value: str
@@ -28,7 +29,7 @@ class IntervalPostScheduler(PostScheduler, Configurable[State]):
             async def undo():
                 state.base = original_value
 
-            state.base = datetime.fromisoformat(value)
+            state.base = isoparse(value)
             return undo
 
         @classproperty
