@@ -34,7 +34,12 @@ class ScrapBeforeParameter(OptionalParameter[State, str]):
 
     @classproperty
     def schema(cls) -> Dict[str, Any]:
-        return {"type": "string", "format": "date-time"}
+        return {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "title": cls.pretty_name,
+            "default": None,
+        }
 
 
 class ScrapAfterParameter(OptionalParameter[State, str]):
@@ -58,7 +63,12 @@ class ScrapAfterParameter(OptionalParameter[State, str]):
 
     @classproperty
     def schema(cls) -> Dict[str, Any]:
-        return {"type": "string", "format": "date-time"}
+        return {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "title": cls.pretty_name,
+            "default": None,
+        }
 
 
 class ScrapLimitParameter(OptionalParameter[State, int]):
@@ -80,7 +90,12 @@ class ScrapLimitParameter(OptionalParameter[State, int]):
 
     @classproperty
     def schema(cls) -> Dict[str, Any]:
-        return {"type": "integer", "minimum": 0}
+        return {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "title": cls.pretty_name,
+            "default": None,
+        }
 
 
 class MaxOfflineEpochsParameter(OptionalParameter[State, int]):
@@ -101,8 +116,17 @@ class MaxOfflineEpochsParameter(OptionalParameter[State, int]):
         return undo
 
     @classproperty
+    def pretty_name(cls) -> str:
+        return "Maximum Offline Epochs"
+
+    @classproperty
     def schema(cls) -> Dict[str, Any]:
-        return {"type": "integer", "minimum": 0}
+        return {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "title": cls.pretty_name,
+            "default": None,
+        }
 
 
 class OfflineBatchSizeParameter(OptionalParameter[State, int]):
@@ -124,7 +148,12 @@ class OfflineBatchSizeParameter(OptionalParameter[State, int]):
 
     @classproperty
     def schema(cls) -> Dict[str, Any]:
-        return {"type": "integer", "minimum": 1}
+        return {
+            "type": ["integer", "null"],
+            "minimum": 1,
+            "title": cls.pretty_name,
+            "default": None,
+        }
 
 
 class PostSchedulerParameter(
@@ -172,7 +201,12 @@ class OnlineIterationsParameter(Parameter[State, int]):
 
     @classproperty
     def schema(cls) -> Dict[str, Any]:
-        return {"type": "integer", "minimum": 0}
+        return {
+            "type": "integer",
+            "minimum": 0,
+            "title": cls.pretty_name,
+            "default": 1,
+        }
 
 
 class OnlineBatchSizeParameter(OptionalParameter[State, int]):
@@ -194,4 +228,9 @@ class OnlineBatchSizeParameter(OptionalParameter[State, int]):
 
     @classproperty
     def schema(cls) -> Dict[str, Any]:
-        return {"type": "integer", "minimum": 1}
+        return {
+            "type": ["integer", "null"],
+            "minimum": 1,
+            "title": cls.pretty_name,
+            "default": None,
+        }

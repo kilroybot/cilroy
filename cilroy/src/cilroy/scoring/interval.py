@@ -34,7 +34,12 @@ class IntervalScoreScheduler(ScoreScheduler, Configurable[State]):
 
         @classproperty
         def schema(cls) -> Dict[str, Any]:
-            return {"type": "string", "format": "date-time"}
+            return {
+                "type": "string",
+                "format": "date-time",
+                "title": cls.pretty_name,
+                "default": utcmidnight().isoformat().replace("+00:00", "Z"),
+            }
 
     class IntervalParameter(Parameter[State, float]):
         async def _get(self, state: State) -> float:
@@ -53,7 +58,12 @@ class IntervalScoreScheduler(ScoreScheduler, Configurable[State]):
 
         @classproperty
         def schema(cls) -> Dict[str, Any]:
-            return {"type": "number", "minimum": 0}
+            return {
+                "type": "number",
+                "minimum": 0,
+                "title": cls.pretty_name,
+                "default": timedelta(days=1).total_seconds(),
+            }
 
     @classmethod
     async def _save_state(cls, state: State, directory: Path) -> None:
