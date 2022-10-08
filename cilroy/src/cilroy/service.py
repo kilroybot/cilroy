@@ -1,6 +1,7 @@
 import json
-from typing import AsyncIterator, Dict
+from typing import AsyncIterator, Dict, Tuple
 
+import aiostream
 import grpclib
 from betterproto.grpc.grpclib_server import ServiceBase
 from grpclib.server import Stream
@@ -152,9 +153,19 @@ class CilroyServiceBase(ServiceBase):
     ) -> "GetModuleMetricsConfigResponse":
         raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
+    async def get_module_metrics(
+        self, get_module_metrics_request: "GetModuleMetricsRequest"
+    ) -> "GetModuleMetricsResponse":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
     async def watch_module_metrics(
         self, watch_module_metrics_request: "WatchModuleMetricsRequest"
     ) -> AsyncIterator["WatchModuleMetricsResponse"]:
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def watch_all(
+        self, watch_all_request: "WatchAllRequest"
+    ) -> AsyncIterator["WatchAllResponse"]:
         raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
     async def __rpc_get_face_metadata(
@@ -402,6 +413,14 @@ class CilroyServiceBase(ServiceBase):
         response = await self.get_module_metrics_config(request)
         await stream.send_message(response)
 
+    async def __rpc_get_module_metrics(
+        self,
+        stream: "grpclib.server.Stream[GetModuleMetricsRequest, GetModuleMetricsResponse]",
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.get_module_metrics(request)
+        await stream.send_message(response)
+
     async def __rpc_watch_module_metrics(
         self,
         stream: "grpclib.server.Stream[WatchModuleMetricsRequest, WatchModuleMetricsResponse]",
@@ -409,6 +428,17 @@ class CilroyServiceBase(ServiceBase):
         request = await stream.recv_message()
         await self._call_rpc_handler_server_stream(
             self.watch_module_metrics,
+            stream,
+            request,
+        )
+
+    async def __rpc_watch_all(
+        self,
+        stream: "grpclib.server.Stream[WatchAllRequest, WatchAllResponse]",
+    ) -> None:
+        request = await stream.recv_message()
+        await self._call_rpc_handler_server_stream(
+            self.watch_all,
             stream,
             request,
         )
@@ -583,11 +613,23 @@ class CilroyServiceBase(ServiceBase):
                 GetModuleMetricsConfigRequest,
                 GetModuleMetricsConfigResponse,
             ),
+            "/kilroy.cilroy.v1alpha.CilroyService/GetModuleMetrics": grpclib.const.Handler(
+                self.__rpc_get_module_metrics,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                GetModuleMetricsRequest,
+                GetModuleMetricsResponse,
+            ),
             "/kilroy.cilroy.v1alpha.CilroyService/WatchModuleMetrics": grpclib.const.Handler(
                 self.__rpc_watch_module_metrics,
                 grpclib.const.Cardinality.UNARY_STREAM,
                 WatchModuleMetricsRequest,
                 WatchModuleMetricsResponse,
+            ),
+            "/kilroy.cilroy.v1alpha.CilroyService/WatchAll": grpclib.const.Handler(
+                self.__rpc_watch_all,
+                grpclib.const.Cardinality.UNARY_STREAM,
+                WatchAllRequest,
+                WatchAllResponse,
             ),
         }
 
@@ -821,12 +863,81 @@ class CilroyService(CilroyServiceBase):
             ]
         )
 
+    async def get_module_metrics(
+        self, get_module_metrics_request: "GetModuleMetricsRequest"
+    ) -> "GetModuleMetricsResponse":
+        metrics = await self._controller.get_module_metrics()
+        return GetModuleMetricsResponse(
+            metrics=[
+                MetricData(
+                    metric_id=metric.metric_id,
+                    dataset_id=metric.dataset_id,
+                    data=json.dumps(metric.data),
+                )
+                for metric in metrics
+            ]
+        )
+
     async def watch_module_metrics(
         self, watch_module_metrics_request: "WatchModuleMetricsRequest"
     ) -> AsyncIterator["WatchModuleMetricsResponse"]:
         async for metric in self._controller.watch_module_metrics():
             yield WatchModuleMetricsResponse(
-                metric_id=metric.metric_id,
-                dataset_id=metric.dataset_id,
-                data=json.dumps(metric.data),
+                metric=MetricData(
+                    metric_id=metric.metric_id,
+                    dataset_id=metric.dataset_id,
+                    data=json.dumps(metric.data),
+                )
             )
+
+    async def watch_all(
+        self, watch_all_request: "WatchAllRequest"
+    ) -> AsyncIterator["WatchAllResponse"]:
+        async def convert(
+            method: str, stream: AsyncIterator[betterproto.Message]
+        ) -> AsyncIterator[Tuple[str, str]]:
+            async for msg in stream:
+                yield method, msg.to_json()
+
+        streams = [
+            (
+                "WatchControllerStatus",
+                self.watch_controller_status(WatchControllerStatusRequest()),
+            ),
+            (
+                "WatchFaceStatus",
+                self.watch_face_status(WatchFaceStatusRequest()),
+            ),
+            (
+                "WatchModuleStatus",
+                self.watch_module_status(WatchModuleStatusRequest()),
+            ),
+            (
+                "WatchTrainingStatus",
+                self.watch_training_status(WatchTrainingStatusRequest()),
+            ),
+            (
+                "WatchControllerConfig",
+                self.watch_controller_config(WatchControllerConfigRequest()),
+            ),
+            (
+                "WatchFaceConfig",
+                self.watch_face_config(WatchFaceConfigRequest()),
+            ),
+            (
+                "WatchModuleConfig",
+                self.watch_module_config(WatchModuleConfigRequest()),
+            ),
+            (
+                "WatchModuleMetrics",
+                self.watch_module_metrics(WatchModuleMetricsRequest()),
+            ),
+        ]
+
+        combine = aiostream.stream.merge(
+            *(convert(method, stream) for method, stream in streams)
+        )
+
+        async with combine.stream() as streamer:
+            async for method, message in streamer:
+                yield WatchAllResponse(method=method, message=message)
