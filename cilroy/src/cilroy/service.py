@@ -683,7 +683,7 @@ class CilroyService(CilroyServiceBase):
     ) -> AsyncIterator["WatchTrainingStatusResponse"]:
         status = await self._controller.get_training_status()
         async for status in status.subscribe():
-            yield GetTrainingStatusResponse(
+            yield WatchTrainingStatusResponse(
                 status=TrainingStatus(status.value)
             )
 
