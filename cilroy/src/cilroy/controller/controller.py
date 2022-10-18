@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from abc import ABC
+from abc import ABC, abstractmethod
 from asyncio import Lock
 from datetime import datetime
 from functools import partial
@@ -431,6 +431,14 @@ class CilroyControllerBase(Configurable[State], ABC):
             ),
         )
 
+    async def cleanup(self) -> None:
+        async with self.state.write_lock() as state:
+            state.module.metrics_task.cancel()
+            try:
+                await state.module.metrics_task
+            except asyncio.CancelledError:
+                pass
+
     @classproperty
     def parameters(cls) -> Set[Parameter]:
         return {
@@ -445,8 +453,12 @@ class CilroyControllerBase(Configurable[State], ABC):
             OnlineBatchSizeParameter(),
         }
 
+    @abstractmethod
+    async def _watch_metrics_task(self) -> None:
+        pass
 
-class CilroyControllerDelegatedBase(CilroyControllerBase):
+
+class CilroyControllerDelegatedBase(CilroyControllerBase, ABC):
     async def get_face_metadata(self) -> Metadata:
         async with self.state.read_lock() as state:
             metadata = await state.face.service.get_metadata()
@@ -713,10 +725,24 @@ class CilroyController(CilroyControllerDelegatedBase):
         async with self.state.read_lock() as state:
             return state.module.archived_metrics
 
+    async def _watch_metrics_task(self) -> None:
+        async with self.state.read_lock() as state:
+            service: ModuleService = state.module.service
+
+        while True:
+            try:
+                async for metric in service.watch_metrics():
+                    async with self.state.write_lock() as state:
+                        state.module.archived_metrics.append(metric)
+                        await state.module.metrics_stream.set(metric)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning("Metrics stream failed.", exc_info=e)
+                await asyncio.sleep(1)
+
     async def watch_module_metrics(self) -> AsyncIterator[MetricData]:
         async with self.state.read_lock() as state:
-            service = state.module_service
-        async for metric in service.watch_metrics():
-            async with self.state.write_lock() as state:
-                state.module_metrics.append(metric)
+            metrics = state.module.metrics_stream
+        async for metric in metrics.subscribe():
             yield metric
