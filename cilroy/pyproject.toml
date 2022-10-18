@@ -10,7 +10,7 @@ repository = "https://github.com/kilroybot/cilroy"
 documentation = "https://kilroybot.github.io/cilroy"
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.10"
 pydantic =  { version = "^1.10", extras = ["dotenv"] }
 omegaconf = "^2.2"
 typer = { version = "^0.6", extras = ["all"] }
@@ -42,7 +42,7 @@ cilroy = "cilroy.__main__:cli"
 
 [tool.black]
 line-length = 79
-target-version = ['py39']
+target-version = ['py310']
 
 [tool.poe]
 verbosity = -1
