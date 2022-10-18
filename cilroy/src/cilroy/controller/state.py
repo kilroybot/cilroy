@@ -9,6 +9,7 @@ from kilroy_face_client_py_sdk import FaceService
 from kilroy_module_client_py_sdk import MetricData, ModuleService
 from kilroy_server_py_utils import Observable
 
+from cilroy.post import PostData
 from cilroy.posting import PostScheduler
 from cilroy.scoring import ScoreScheduler
 from cilroy.status import TrainingStatus
@@ -50,6 +51,13 @@ class OnlineState:
 
 
 @dataclass
+class FeedState:
+    feed: List[PostData]
+    length: int
+    stream: Observable[PostData]
+
+
+@dataclass
 class State:
     face: FaceState
     module: ModuleState
@@ -57,3 +65,4 @@ class State:
     online: OnlineState
     training_task: Optional[asyncio.Task]
     training_status: Observable[TrainingStatus]
+    feed: FeedState

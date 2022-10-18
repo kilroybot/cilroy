@@ -42,6 +42,7 @@ from cilroy.controller.parameters import (
     ScrapAfterParameter,
     ScrapBeforeParameter,
     ScrapLimitParameter,
+    FeedLengthParameter,
 )
 from cilroy.controller.params import (
     OfflineParams,
@@ -49,6 +50,7 @@ from cilroy.controller.params import (
     Params,
     FaceParams,
     ModuleParams,
+    FeedParams,
 )
 from cilroy.controller.state import (
     OfflineState,
@@ -56,9 +58,11 @@ from cilroy.controller.state import (
     State,
     FaceState,
     ModuleState,
+    FeedState,
 )
 from cilroy.messages import Status
 from cilroy.metadata import Metadata
+from cilroy.post import PostData
 from cilroy.posting import PostScheduler
 from cilroy.scoring import ScoreScheduler
 from cilroy.status import TrainingStatus
@@ -142,6 +146,14 @@ class CilroyControllerBase(Configurable[State], ABC):
     async def _build_training_status() -> Observable[TrainingStatus]:
         return await Observable.build(TrainingStatus.IDLE)
 
+    @staticmethod
+    async def _build_feed_state(params: FeedParams) -> FeedState:
+        return FeedState(
+            feed=[],
+            length=params.length,
+            stream=await Observable.build(),
+        )
+
     async def _build_default_state(self) -> State:
         params = Params(**self._kwargs)
         return State(
@@ -151,7 +163,7 @@ class CilroyControllerBase(Configurable[State], ABC):
             online=await self._build_online_state(params.online),
             training_task=None,
             training_status=await self._build_training_status(),
-            module_metrics=[],
+            feed=await self._build_feed_state(params.feed),
         )
 
     @staticmethod
@@ -266,13 +278,14 @@ class CilroyControllerBase(Configurable[State], ABC):
         state_dict = await cls._create_online_state_dict(state)
         await cls._save_state_dict(directory, state_dict)
 
-    @staticmethod
-    async def _save_module_metrics(
-        metrics: List[MetricData], directory: Path
-    ) -> None:
-        serialized = [json.loads(metric.json()) for metric in metrics]
-        with open(directory / "metrics.json", "w") as f:
-            json.dump([metric for metric in serialized], f)
+    @classmethod
+    async def _save_feed_state(cls, state: FeedState, directory: Path) -> None:
+        serialized_feed = [json.loads(post.json()) for post in state.feed]
+        state_dict = {
+            "feed": serialized_feed,
+            "length": state.length,
+        }
+        await cls._save_state_dict(directory, state_dict)
 
     @classmethod
     async def _save_state(cls, state: State, directory: Path) -> None:
@@ -292,9 +305,9 @@ class CilroyControllerBase(Configurable[State], ABC):
         online_directory.mkdir(parents=True, exist_ok=True)
         await cls._save_online_state(state.online, online_directory)
 
-        metrics_directory = directory / "metrics"
-        metrics_directory.mkdir(parents=True, exist_ok=True)
-        await cls._save_module_metrics(state.module_metrics, metrics_directory)
+        feed_directory = directory / "feed"
+        feed_directory.mkdir(parents=True, exist_ok=True)
+        await cls._save_feed_state(state.feed, feed_directory)
 
     @staticmethod
     async def _load_state_dict(directory: Path) -> Dict[str, Any]:
@@ -403,11 +416,18 @@ class CilroyControllerBase(Configurable[State], ABC):
             lock=Lock(),
         )
 
-    @staticmethod
-    async def _load_module_metrics(directory: Path) -> List[MetricData]:
-        with open(directory / "metrics.json", "r") as f:
-            serialized = json.load(f)
-        return [MetricData.parse_obj(metric) for metric in serialized]
+    @classmethod
+    async def _load_saved_feed_state(
+        cls, directory: Path, params: FeedParams
+    ) -> FeedState:
+        state_dict = await cls._load_state_dict(directory)
+        return FeedState(
+            feed=[
+                PostData.parse_obj(post) for post in state_dict.get("feed", [])
+            ],
+            length=state_dict.get("length", params.length),
+            stream=await Observable.build(),
+        )
 
     async def _load_saved_state(self, directory: Path) -> State:
         params = Params(**self._kwargs)
@@ -426,8 +446,8 @@ class CilroyControllerBase(Configurable[State], ABC):
             ),
             training_task=None,
             training_status=await self._build_training_status(),
-            module_metrics=await self._load_module_metrics(
-                directory / "metrics"
+            feed=await self._load_saved_feed_state(
+                directory / "feed", params.feed
             ),
         )
 
@@ -451,6 +471,7 @@ class CilroyControllerBase(Configurable[State], ABC):
             ScoreSchedulerParameter(),
             OnlineIterationsParameter(),
             OnlineBatchSizeParameter(),
+            FeedLengthParameter(),
         }
 
     @abstractmethod
@@ -616,9 +637,20 @@ class CilroyController(CilroyControllerDelegatedBase):
                 logger.info("Online training: Creating new post...")
 
                 module_post_id, post = await anext(module_service.generate())
-                face_post_id = await face_service.post(post)
+                face_post_id, post_url = await face_service.post(post)
+
+                post_data = PostData(
+                    id=face_post_id,
+                    url=post_url,
+                    content=post,
+                    created_at=datetime.utcnow(),
+                )
+
                 async with self.state.write_lock() as state:
                     state.online.ids_cache[face_post_id] = module_post_id
+                    state.feed.feed = state.feed.feed + [post_data]
+                    state.feed.feed = state.feed.feed[-state.feed.length :]
+                    await state.feed.stream.set(post_data)
 
                 logger.info(
                     f"Online training: "
@@ -759,3 +791,13 @@ class CilroyController(CilroyControllerDelegatedBase):
             state.offline.posts_cache.clear()
             state.online.ids_cache.clear()
             state.feed.feed = []
+
+    async def get_feed(self) -> List[PostData]:
+        async with self.state.read_lock() as state:
+            return state.feed.feed
+
+    async def watch_feed(self) -> AsyncIterator[PostData]:
+        async with self.state.read_lock() as state:
+            feed = state.feed.stream
+        async for post in feed.subscribe():
+            yield post

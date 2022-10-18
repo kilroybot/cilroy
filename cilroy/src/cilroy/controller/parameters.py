@@ -234,3 +234,29 @@ class OnlineBatchSizeParameter(OptionalParameter[State, int]):
             "title": cls.pretty_name,
             "default": None,
         }
+
+
+class FeedLengthParameter(Parameter[State, int]):
+    async def _get(self, state: State) -> int:
+        return state.feed.length
+
+    async def _set(self, state: State, value: int) -> Callable[[], Awaitable]:
+        original_value = state.feed.length
+        original_feed = state.feed.feed
+
+        async def undo():
+            state.feed.length = original_value
+            state.feed.feed = original_feed
+
+        state.feed.length = value
+        state.feed.feed = state.feed.feed[-value:]
+        return undo
+
+    @classproperty
+    def schema(cls) -> Dict[str, Any]:
+        return {
+            "type": "integer",
+            "minimum": 1,
+            "title": cls.pretty_name,
+            "default": 100,
+        }

@@ -31,8 +31,13 @@ class OnlineParams(SerializableModel):
     batch_size: Optional[int] = None
 
 
+class FeedParams(SerializableModel):
+    length: int = 100
+
+
 class Params(SerializableModel):
     face: FaceParams = FaceParams()
     module: ModuleParams = ModuleParams()
     offline: OfflineParams = OfflineParams()
     online: OnlineParams = OnlineParams()
+    feed: FeedParams = FeedParams()
