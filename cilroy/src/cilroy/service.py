@@ -954,6 +954,7 @@ class CilroyService(CilroyServiceBase):
                 MetricConfig(
                     id=metric.id,
                     label=metric.label,
+                    group=metric.group,
                     config=json.dumps(metric.config),
                 )
                 for metric in metrics
