@@ -4,6 +4,16 @@ from typing import Any, Dict, Optional
 from cilroy.models import SerializableModel
 
 
+class FaceParams(SerializableModel):
+    host: str = "localhost"
+    port: int = 10000
+
+
+class ModuleParams(SerializableModel):
+    host: str = "localhost"
+    port: int = 11000
+
+
 class OfflineParams(SerializableModel):
     scrap_before: Optional[datetime] = None
     scrap_after: Optional[datetime] = None
@@ -22,9 +32,7 @@ class OnlineParams(SerializableModel):
 
 
 class Params(SerializableModel):
-    face_host: str = "localhost"
-    face_port: int = 10000
-    module_host: str = "localhost"
-    module_port: int = 11000
+    face: FaceParams = FaceParams()
+    module: ModuleParams = ModuleParams()
     offline: OfflineParams = OfflineParams()
     online: OnlineParams = OnlineParams()

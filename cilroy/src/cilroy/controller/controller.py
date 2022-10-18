@@ -43,8 +43,20 @@ from cilroy.controller.parameters import (
     ScrapBeforeParameter,
     ScrapLimitParameter,
 )
-from cilroy.controller.params import OfflineParams, OnlineParams, Params
-from cilroy.controller.state import OfflineState, OnlineState, State
+from cilroy.controller.params import (
+    OfflineParams,
+    OnlineParams,
+    Params,
+    FaceParams,
+    ModuleParams,
+)
+from cilroy.controller.state import (
+    OfflineState,
+    OnlineState,
+    State,
+    FaceState,
+    ModuleState,
+)
 from cilroy.messages import Status
 from cilroy.metadata import Metadata
 from cilroy.posting import PostScheduler
@@ -57,12 +69,26 @@ logger = logging.getLogger(__name__)
 
 class CilroyControllerBase(Configurable[State], ABC):
     @staticmethod
-    async def _build_face_service(params: Params) -> FaceService:
-        return FaceService(Channel(params.face_host, params.face_port))
+    async def _build_face_service(params: FaceParams) -> FaceService:
+        return FaceService(Channel(params.host, params.port))
+
+    @classmethod
+    async def _build_face_state(cls, params: FaceParams) -> FaceState:
+        return FaceState(
+            service=await cls._build_face_service(params),
+        )
 
     @staticmethod
-    async def _build_module_service(params: Params) -> ModuleService:
-        return ModuleService(Channel(params.module_host, params.module_port))
+    async def _build_module_service(params: ModuleParams) -> ModuleService:
+        return ModuleService(Channel(params.host, params.port))
+
+    async def _build_module_state(self, params: ModuleParams) -> ModuleState:
+        return ModuleState(
+            service=await self._build_module_service(params),
+            archived_metrics=[],
+            metrics_stream=await Observable.build(),
+            metrics_task=asyncio.create_task(self._watch_metrics_task()),
+        )
 
     @staticmethod
     async def _build_offline_state(params: OfflineParams) -> OfflineState:
@@ -119,8 +145,8 @@ class CilroyControllerBase(Configurable[State], ABC):
     async def _build_default_state(self) -> State:
         params = Params(**self._kwargs)
         return State(
-            face_service=await self._build_face_service(params),
-            module_service=await self._build_module_service(params),
+            face=await self._build_face_state(params.face),
+            module=await self._build_module_state(params.module),
             offline=await self._build_offline_state(params.offline),
             online=await self._build_online_state(params.online),
             training_task=None,
@@ -134,6 +160,28 @@ class CilroyControllerBase(Configurable[State], ABC):
     ) -> None:
         with open(directory / "state.json", "w") as f:
             json.dump(state_dict, f)
+
+    @staticmethod
+    async def _save_face_state(state: FaceState, directory: Path) -> None:
+        pass
+
+    @staticmethod
+    async def _save_module_metrics(
+        metrics: List[MetricData], directory: Path
+    ) -> None:
+        serialized = [json.loads(metric.json()) for metric in metrics]
+        with open(directory / "metrics.json", "w") as f:
+            json.dump([metric for metric in serialized], f)
+
+    @classmethod
+    async def _save_module_state(
+        cls, state: ModuleState, directory: Path
+    ) -> None:
+        metrics_directory = directory / "metrics"
+        metrics_directory.mkdir(parents=True, exist_ok=True)
+        await cls._save_module_metrics(
+            state.archived_metrics, metrics_directory
+        )
 
     @staticmethod
     async def _create_offline_state_dict(
@@ -228,6 +276,14 @@ class CilroyControllerBase(Configurable[State], ABC):
 
     @classmethod
     async def _save_state(cls, state: State, directory: Path) -> None:
+        face_directory = directory / "face"
+        face_directory.mkdir(parents=True, exist_ok=True)
+        await cls._save_face_state(state.face, face_directory)
+
+        module_directory = directory / "module"
+        module_directory.mkdir(parents=True, exist_ok=True)
+        await cls._save_module_state(state.module, module_directory)
+
         offline_directory = directory / "offline"
         offline_directory.mkdir(parents=True, exist_ok=True)
         await cls._save_offline_state(state.offline, offline_directory)
@@ -244,6 +300,30 @@ class CilroyControllerBase(Configurable[State], ABC):
     async def _load_state_dict(directory: Path) -> Dict[str, Any]:
         with open(directory / "state.json", "r") as f:
             return json.load(f)
+
+    @classmethod
+    async def _load_saved_face_state(
+        cls, directory: Path, params: FaceParams
+    ) -> FaceState:
+        return FaceState(service=await cls._build_face_service(params))
+
+    @staticmethod
+    async def _load_module_metrics(directory: Path) -> List[MetricData]:
+        with open(directory / "metrics.json", "r") as f:
+            serialized = json.load(f)
+        return [MetricData.parse_obj(metric) for metric in serialized]
+
+    async def _load_saved_module_state(
+        self, directory: Path, params: ModuleParams
+    ) -> ModuleState:
+        return ModuleState(
+            service=await self._build_module_service(params),
+            archived_metrics=await self._load_module_metrics(
+                directory / "metrics"
+            ),
+            metrics_stream=await Observable.build(),
+            metrics_task=asyncio.create_task(self._watch_metrics_task()),
+        )
 
     @classmethod
     async def _load_saved_offline_state(
@@ -332,8 +412,12 @@ class CilroyControllerBase(Configurable[State], ABC):
     async def _load_saved_state(self, directory: Path) -> State:
         params = Params(**self._kwargs)
         return State(
-            face_service=await self._build_face_service(params),
-            module_service=await self._build_module_service(params),
+            face=await self._load_saved_face_state(
+                directory / "face", params.face
+            ),
+            module=await self._load_saved_module_state(
+                directory / "module", params.module
+            ),
             offline=await self._load_saved_offline_state(
                 directory / "offline", params.offline
             ),
@@ -365,73 +449,73 @@ class CilroyControllerBase(Configurable[State], ABC):
 class CilroyControllerDelegatedBase(CilroyControllerBase):
     async def get_face_metadata(self) -> Metadata:
         async with self.state.read_lock() as state:
-            metadata = await state.face_service.get_metadata()
+            metadata = await state.face.service.get_metadata()
             return Metadata(key=metadata.key, description=metadata.description)
 
     async def get_module_metadata(self) -> Metadata:
         async with self.state.read_lock() as state:
-            metadata = await state.module_service.get_metadata()
+            metadata = await state.module.service.get_metadata()
             return Metadata(key=metadata.key, description=metadata.description)
 
     async def get_face_post_schema(self) -> JSONSchema:
         async with self.state.read_lock() as state:
-            return JSONSchema(**await state.face_service.get_post_schema())
+            return JSONSchema(**await state.face.service.get_post_schema())
 
     async def get_module_post_schema(self) -> JSONSchema:
         async with self.state.read_lock() as state:
-            return JSONSchema(**await state.module_service.get_post_schema())
+            return JSONSchema(**await state.module.service.get_post_schema())
 
     async def get_face_status(self) -> Status:
         async with self.state.read_lock() as state:
-            status = await state.face_service.get_status()
+            status = await state.face.service.get_status()
         return Status(status)
 
     async def watch_face_status(self) -> AsyncIterable[Status]:
         async with self.state.read_lock() as state:
-            service = state.face_service
+            service = state.face.service
         async for status in service.watch_status():
             yield Status(status)
 
     async def get_module_status(self) -> Status:
         async with self.state.read_lock() as state:
-            status = await state.module_service.get_status()
+            status = await state.module.service.get_status()
         return Status(status)
 
     async def watch_module_status(self) -> AsyncIterable[Status]:
         async with self.state.read_lock() as state:
-            service = state.module_service
+            service = state.module.service
         async for status in service.watch_status():
             yield Status(status)
 
     async def get_face_config_schema(self) -> JSONSchema:
         async with self.state.read_lock() as state:
-            return JSONSchema(**await state.face_service.get_config_schema())
+            return JSONSchema(**await state.face.service.get_config_schema())
 
     async def get_face_config(self) -> Dict[str, Any]:
         async with self.state.read_lock() as state:
-            return await state.face_service.get_config()
+            return await state.face.service.get_config()
 
     async def watch_face_config(self) -> AsyncIterable[Dict[str, Any]]:
         async with self.state.read_lock() as state:
-            service = state.face_service
+            service = state.face.service
         async for config in service.watch_config():
             yield config
 
     async def set_face_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
         async with self.state.write_lock() as state:
-            return await state.face_service.set_config(config)
+            return await state.face.service.set_config(config)
 
     async def get_module_config_schema(self) -> JSONSchema:
         async with self.state.read_lock() as state:
-            return JSONSchema(**await state.module_service.get_config_schema())
+            return JSONSchema(**await state.module.service.get_config_schema())
 
     async def get_module_config(self) -> Dict[str, Any]:
         async with self.state.read_lock() as state:
-            return await state.module_service.get_config()
+            return await state.module.service.get_config()
 
     async def watch_module_config(self) -> AsyncIterable[Dict[str, Any]]:
         async with self.state.read_lock() as state:
-            service = state.module_service
+            service = state.module.service
         async for config in service.watch_config():
             yield config
 
@@ -439,7 +523,7 @@ class CilroyControllerDelegatedBase(CilroyControllerBase):
         self, config: Dict[str, Any]
     ) -> Dict[str, Any]:
         async with self.state.write_lock() as state:
-            return await state.module_service.set_config(config)
+            return await state.module.service.set_config(config)
 
 
 class CilroyController(CilroyControllerDelegatedBase):
@@ -458,7 +542,7 @@ class CilroyController(CilroyControllerDelegatedBase):
             async with self.state.read_lock() as state:
                 max_epochs = state.offline.max_epochs
                 batch_size = state.offline.batch_size
-                service = state.module_service
+                service = state.module.service
 
             if max_epochs is not None and epoch >= max_epochs:
                 break
@@ -485,7 +569,7 @@ class CilroyController(CilroyControllerDelegatedBase):
                 yield post, score
 
         state = await self.state.value.fetch()
-        posts = state.face_service.scrap(
+        posts = state.face.service.scrap(
             state.offline.scrap_limit,
             state.offline.scrap_before,
             state.offline.scrap_after,
@@ -510,8 +594,8 @@ class CilroyController(CilroyControllerDelegatedBase):
 
     async def _train_online_post_loop(self) -> None:
         async with self.state.read_lock() as state:
-            module_service = state.module_service
-            face_service = state.face_service
+            module_service = state.module.service
+            face_service = state.face.service
             post_scheduler = state.online.post_scheduler
             lock = state.online.lock
 
@@ -539,7 +623,7 @@ class CilroyController(CilroyControllerDelegatedBase):
             async with self.state.read_lock() as state:
                 iterations = state.online.iterations
                 batch_size = state.online.batch_size
-                service = state.module_service
+                service = state.module.service
 
             if iteration >= iterations:
                 break
@@ -551,7 +635,7 @@ class CilroyController(CilroyControllerDelegatedBase):
 
     async def _train_online_score_loop(self) -> None:
         async with self.state.read_lock() as state:
-            face_service = state.face_service
+            face_service = state.face.service
             score_scheduler = state.online.score_scheduler
             lock = state.online.lock
 
@@ -623,11 +707,11 @@ class CilroyController(CilroyControllerDelegatedBase):
 
     async def get_module_metrics_config(self) -> List[MetricConfig]:
         async with self.state.read_lock() as state:
-            return await state.module_service.get_metrics_config()
+            return await state.module.service.get_metrics_config()
 
     async def get_module_metrics(self) -> List[MetricData]:
         async with self.state.read_lock() as state:
-            return state.module_metrics
+            return state.module.archived_metrics
 
     async def watch_module_metrics(self) -> AsyncIterator[MetricData]:
         async with self.state.read_lock() as state:
