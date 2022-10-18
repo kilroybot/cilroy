@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "cilroy"
-version = "0.3.0"
+version = "0.4.0"
 description = "kilroy controller 🎛️"
 readme = "README.md"
 authors = ["kilroy <kilroymail@pm.me>"]
