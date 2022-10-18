@@ -15,6 +15,19 @@ from cilroy.status import TrainingStatus
 
 
 @dataclass
+class FaceState:
+    service: FaceService
+
+
+@dataclass
+class ModuleState:
+    service: ModuleService
+    archived_metrics: List[MetricData]
+    metrics_stream: Observable[MetricData]
+    metrics_task: asyncio.Task
+
+
+@dataclass
 class OfflineState:
     scrap_before: Optional[datetime]
     scrap_after: Optional[datetime]
@@ -38,10 +51,9 @@ class OnlineState:
 
 @dataclass
 class State:
-    face_service: FaceService
-    module_service: ModuleService
+    face: FaceState
+    module: ModuleState
     offline: OfflineState
     online: OnlineState
     training_task: Optional[asyncio.Task]
     training_status: Observable[TrainingStatus]
-    module_metrics: List[MetricData]
