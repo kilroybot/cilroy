@@ -342,3 +342,33 @@ class WatchAllRequest(betterproto.Message):
 class WatchAllResponse(betterproto.Message):
     method: str = betterproto.string_field(1)
     message: str = betterproto.string_field(2)
+
+
+@dataclass(eq=False, repr=False)
+class ResetControllerRequest(betterproto.Message):
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class ResetControllerResponse(betterproto.Message):
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class ResetFaceRequest(betterproto.Message):
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class ResetFaceResponse(betterproto.Message):
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class ResetModuleRequest(betterproto.Message):
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class ResetModuleResponse(betterproto.Message):
+    pass
