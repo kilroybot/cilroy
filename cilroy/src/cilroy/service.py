@@ -183,6 +183,16 @@ class CilroyServiceBase(ServiceBase):
     ) -> "ResetModuleResponse":
         raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
+    async def get_feed(
+        self, get_feed_request: "GetFeedRequest"
+    ) -> "GetFeedResponse":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def watch_feed(
+        self, watch_feed_request: "WatchFeedRequest"
+    ) -> AsyncIterator["WatchFeedResponse"]:
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
     async def __rpc_get_face_metadata(
         self,
         stream: "grpclib.server.Stream[GetFaceMetadataRequest, GetFaceMetadataResponse]",
@@ -482,6 +492,24 @@ class CilroyServiceBase(ServiceBase):
         response = await self.reset_module(request)
         await stream.send_message(response)
 
+    async def __rpc_get_feed(
+        self, stream: "grpclib.server.Stream[GetFeedRequest, GetFeedResponse]"
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.get_feed(request)
+        await stream.send_message(response)
+
+    async def __rpc_watch_feed(
+        self,
+        stream: "grpclib.server.Stream[WatchFeedRequest, WatchFeedResponse]",
+    ) -> None:
+        request = await stream.recv_message()
+        await self._call_rpc_handler_server_stream(
+            self.watch_feed,
+            stream,
+            request,
+        )
+
     def __mapping__(self) -> Dict[str, grpclib.const.Handler]:
         return {
             "/kilroy.cilroy.v1alpha.CilroyService/GetFaceMetadata": grpclib.const.Handler(
@@ -687,6 +715,18 @@ class CilroyServiceBase(ServiceBase):
                 grpclib.const.Cardinality.UNARY_UNARY,
                 ResetModuleRequest,
                 ResetModuleResponse,
+            ),
+            "/kilroy.cilroy.v1alpha.CilroyService/GetFeed": grpclib.const.Handler(
+                self.__rpc_get_feed,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                GetFeedRequest,
+                GetFeedResponse,
+            ),
+            "/kilroy.cilroy.v1alpha.CilroyService/WatchFeed": grpclib.const.Handler(
+                self.__rpc_watch_feed,
+                grpclib.const.Cardinality.UNARY_STREAM,
+                WatchFeedRequest,
+                WatchFeedResponse,
             ),
         }
 
@@ -989,6 +1029,10 @@ class CilroyService(CilroyServiceBase):
                 "WatchModuleMetrics",
                 self.watch_module_metrics(WatchModuleMetricsRequest()),
             ),
+            (
+                "WatchFeed",
+                self.watch_feed(WatchFeedRequest()),
+            ),
         ]
 
         combine = aiostream.stream.merge(
@@ -1016,3 +1060,36 @@ class CilroyService(CilroyServiceBase):
     ) -> "ResetModuleResponse":
         await self._controller.reset_module()
         return ResetModuleResponse()
+
+    async def get_feed(
+        self, get_feed_request: "GetFeedRequest"
+    ) -> "GetFeedResponse":
+        feed = await self._controller.get_feed()
+        return GetFeedResponse(
+            posts=[
+                Post(
+                    id=str(post.id),
+                    url=post.url,
+                    content=json.dumps(post.content),
+                    created_at=post.created_at.isoformat().replace(
+                        "+00:00", "Z"
+                    ),
+                )
+                for post in feed
+            ]
+        )
+
+    async def watch_feed(
+        self, watch_feed_request: "WatchFeedRequest"
+    ) -> AsyncIterator["WatchFeedResponse"]:
+        async for post in self._controller.watch_feed():
+            yield WatchFeedResponse(
+                post=Post(
+                    id=str(post.id),
+                    url=post.url,
+                    content=json.dumps(post.content),
+                    created_at=post.created_at.isoformat().replace(
+                        "+00:00", "Z"
+                    ),
+                )
+            )

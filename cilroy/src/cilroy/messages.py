@@ -372,3 +372,31 @@ class ResetModuleRequest(betterproto.Message):
 @dataclass(eq=False, repr=False)
 class ResetModuleResponse(betterproto.Message):
     pass
+
+
+@dataclass(eq=False, repr=False)
+class Post(betterproto.Message):
+    id: str = betterproto.string_field(1)
+    url: str = betterproto.string_field(2)
+    content: str = betterproto.string_field(3)
+    created_at: str = betterproto.string_field(4)
+
+
+@dataclass(eq=False, repr=False)
+class GetFeedRequest(betterproto.Message):
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class GetFeedResponse(betterproto.Message):
+    posts: List["Post"] = betterproto.message_field(1)
+
+
+@dataclass(eq=False, repr=False)
+class WatchFeedRequest(betterproto.Message):
+    pass
+
+
+@dataclass(eq=False, repr=False)
+class WatchFeedResponse(betterproto.Message):
+    post: "Post" = betterproto.message_field(1)
