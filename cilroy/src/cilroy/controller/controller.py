@@ -746,3 +746,16 @@ class CilroyController(CilroyControllerDelegatedBase):
             metrics = state.module.metrics_stream
         async for metric in metrics.subscribe():
             yield metric
+
+    async def reset_face(self) -> None:
+        async with self.state.write_lock() as state:
+            await state.face.service.reset()
+
+    async def reset_module(self) -> None:
+        await self.stop_training()
+        async with self.state.write_lock() as state:
+            await state.module.service.reset()
+            state.module.archived_metrics = []
+            state.offline.posts_cache.clear()
+            state.online.ids_cache.clear()
+            state.feed.feed = []

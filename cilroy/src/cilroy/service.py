@@ -168,6 +168,21 @@ class CilroyServiceBase(ServiceBase):
     ) -> AsyncIterator["WatchAllResponse"]:
         raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
+    async def reset_controller(
+        self, reset_controller_request: "ResetControllerRequest"
+    ) -> "ResetControllerResponse":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def reset_face(
+        self, reset_face_request: "ResetFaceRequest"
+    ) -> "ResetFaceResponse":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def reset_module(
+        self, reset_module_request: "ResetModuleRequest"
+    ) -> "ResetModuleResponse":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
     async def __rpc_get_face_metadata(
         self,
         stream: "grpclib.server.Stream[GetFaceMetadataRequest, GetFaceMetadataResponse]",
@@ -443,6 +458,30 @@ class CilroyServiceBase(ServiceBase):
             request,
         )
 
+    async def __rpc_reset_controller(
+        self,
+        stream: "grpclib.server.Stream[ResetControllerRequest, ResetControllerResponse]",
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.reset_controller(request)
+        await stream.send_message(response)
+
+    async def __rpc_reset_face(
+        self,
+        stream: "grpclib.server.Stream[ResetFaceRequest, ResetFaceResponse]",
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.reset_face(request)
+        await stream.send_message(response)
+
+    async def __rpc_reset_module(
+        self,
+        stream: "grpclib.server.Stream[ResetModuleRequest, ResetModuleResponse]",
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.reset_module(request)
+        await stream.send_message(response)
+
     def __mapping__(self) -> Dict[str, grpclib.const.Handler]:
         return {
             "/kilroy.cilroy.v1alpha.CilroyService/GetFaceMetadata": grpclib.const.Handler(
@@ -630,6 +669,24 @@ class CilroyServiceBase(ServiceBase):
                 grpclib.const.Cardinality.UNARY_STREAM,
                 WatchAllRequest,
                 WatchAllResponse,
+            ),
+            "/kilroy.cilroy.v1alpha.CilroyService/ResetController": grpclib.const.Handler(
+                self.__rpc_reset_controller,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                ResetControllerRequest,
+                ResetControllerResponse,
+            ),
+            "/kilroy.cilroy.v1alpha.CilroyService/ResetFace": grpclib.const.Handler(
+                self.__rpc_reset_face,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                ResetFaceRequest,
+                ResetFaceResponse,
+            ),
+            "/kilroy.cilroy.v1alpha.CilroyService/ResetModule": grpclib.const.Handler(
+                self.__rpc_reset_module,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                ResetModuleRequest,
+                ResetModuleResponse,
             ),
         }
 
@@ -941,3 +998,21 @@ class CilroyService(CilroyServiceBase):
         async with combine.stream() as streamer:
             async for method, message in streamer:
                 yield WatchAllResponse(method=method, message=message)
+
+    async def reset_controller(
+        self, reset_controller_request: "ResetControllerRequest"
+    ) -> "ResetControllerResponse":
+        await self._controller.init()
+        return ResetControllerResponse()
+
+    async def reset_face(
+        self, reset_face_request: "ResetFaceRequest"
+    ) -> "ResetFaceResponse":
+        await self._controller.reset_face()
+        return ResetFaceResponse()
+
+    async def reset_module(
+        self, reset_module_request: "ResetModuleRequest"
+    ) -> "ResetModuleResponse":
+        await self._controller.reset_module()
+        return ResetModuleResponse()
