@@ -401,3 +401,13 @@ class WatchFeedRequest(betterproto.Message):
 @dataclass(eq=False, repr=False)
 class WatchFeedResponse(betterproto.Message):
     post: "Post" = betterproto.message_field(1)
+
+
+@dataclass(eq=False, repr=False)
+class GeneratePostsRequest(betterproto.Message):
+    quantity: int = betterproto.uint64_field(1)
+
+
+@dataclass(eq=False, repr=False)
+class GeneratePostsResponse(betterproto.Message):
+    content: str = betterproto.string_field(1)

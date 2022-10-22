@@ -558,6 +558,13 @@ class CilroyControllerDelegatedBase(CilroyControllerBase, ABC):
         async with self.state.write_lock() as state:
             return await state.module.service.set_config(config)
 
+    async def generate_posts(self, n: int) -> AsyncIterable[Dict[str, Any]]:
+        async with self.state.read_lock() as state:
+            service = state.module.service
+
+        async for post_id, content in service.generate(n, dry=True):
+            yield content
+
 
 class CilroyController(CilroyControllerDelegatedBase):
     async def get_training_status(self) -> ReadableObservable[TrainingStatus]:
