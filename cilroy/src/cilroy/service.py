@@ -193,6 +193,11 @@ class CilroyServiceBase(ServiceBase):
     ) -> AsyncIterator["WatchFeedResponse"]:
         raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
+    async def generate_posts(
+        self, generate_posts_request: "GeneratePostsRequest"
+    ) -> AsyncIterator["GeneratePostsResponse"]:
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
     async def __rpc_get_face_metadata(
         self,
         stream: "grpclib.server.Stream[GetFaceMetadataRequest, GetFaceMetadataResponse]",
@@ -493,7 +498,8 @@ class CilroyServiceBase(ServiceBase):
         await stream.send_message(response)
 
     async def __rpc_get_feed(
-        self, stream: "grpclib.server.Stream[GetFeedRequest, GetFeedResponse]"
+        self,
+        stream: "grpclib.server.Stream[GetFeedRequest, GetFeedResponse]",
     ) -> None:
         request = await stream.recv_message()
         response = await self.get_feed(request)
@@ -506,6 +512,17 @@ class CilroyServiceBase(ServiceBase):
         request = await stream.recv_message()
         await self._call_rpc_handler_server_stream(
             self.watch_feed,
+            stream,
+            request,
+        )
+
+    async def __rpc_generate_posts(
+        self,
+        stream: "grpclib.server.Stream[GeneratePostsRequest, GeneratePostsResponse]",
+    ) -> None:
+        request = await stream.recv_message()
+        await self._call_rpc_handler_server_stream(
+            self.generate_posts,
             stream,
             request,
         )
@@ -727,6 +744,12 @@ class CilroyServiceBase(ServiceBase):
                 grpclib.const.Cardinality.UNARY_STREAM,
                 WatchFeedRequest,
                 WatchFeedResponse,
+            ),
+            "/kilroy.cilroy.v1alpha.CilroyService/GeneratePosts": grpclib.const.Handler(
+                self.__rpc_generate_posts,
+                grpclib.const.Cardinality.UNARY_STREAM,
+                GeneratePostsRequest,
+                GeneratePostsResponse,
             ),
         }
 
@@ -1094,3 +1117,11 @@ class CilroyService(CilroyServiceBase):
                     ),
                 )
             )
+
+    async def generate_posts(
+        self, generate_posts_request: "GeneratePostsRequest"
+    ) -> AsyncIterator["GeneratePostsResponse"]:
+        async for post in self._controller.generate_posts(
+            generate_posts_request.quantity
+        ):
+            yield GeneratePostsResponse(content=json.dumps(post))
