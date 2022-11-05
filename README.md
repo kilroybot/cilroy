@@ -15,9 +15,9 @@ kilroy controller 🎛️
 
 This `README` provides info about the development process.
 
-For more info about the package itself
-see `cilroy/README.md`
-or [docs](https://kilroybot.github.io/cilroy).
+For more info about the package itself see
+[package `README`](cilroy/README.md) or
+[docs](https://kilroybot.github.io/cilroy).
 
 ## Quickstart (on Ubuntu)
 
