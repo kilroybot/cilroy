@@ -4,11 +4,11 @@ from pathlib import Path
 from typing import Any, AsyncIterable, Awaitable, Callable, Dict
 
 from dateutil.parser import isoparse
-from kilroy_server_py_utils import Configurable, Parameter, classproperty
 
 from cilroy.models import SerializableState
-from cilroy.posting import PostScheduler
+from cilroy.schedulers.base import Scheduler
 from cilroy.utils import next_time, seconds_until, utcmidnight
+from kilroy_server_py_utils import Configurable, Parameter, classproperty
 
 
 class State(SerializableState):
@@ -16,13 +16,15 @@ class State(SerializableState):
     interval: timedelta = timedelta(hours=1)
 
 
-class IntervalPostScheduler(PostScheduler, Configurable[State]):
+class IntervalScheduler(Scheduler, Configurable[State]):
     class BaseParameter(Parameter[State, str]):
-        async def _get(self, state: State) -> str:
+        @classmethod
+        async def _get(cls, state: State) -> str:
             return state.base.isoformat().replace("+00:00", "Z")
 
+        @classmethod
         async def _set(
-            self, state: State, value: str
+            cls, state: State, value: str
         ) -> Callable[[], Awaitable]:
             original_value = state.base
 
@@ -32,6 +34,7 @@ class IntervalPostScheduler(PostScheduler, Configurable[State]):
             state.base = isoparse(value)
             return undo
 
+        # noinspection PyMethodParameters
         @classproperty
         def schema(cls) -> Dict[str, Any]:
             return {
@@ -42,11 +45,13 @@ class IntervalPostScheduler(PostScheduler, Configurable[State]):
             }
 
     class IntervalParameter(Parameter[State, float]):
-        async def _get(self, state: State) -> float:
+        @classmethod
+        async def _get(cls, state: State) -> float:
             return state.interval.total_seconds()
 
+        @classmethod
         async def _set(
-            self, state: State, value: float
+            cls, state: State, value: float
         ) -> Callable[[], Awaitable]:
             original_value = state.interval
 
@@ -56,13 +61,14 @@ class IntervalPostScheduler(PostScheduler, Configurable[State]):
             state.interval = timedelta(seconds=value)
             return undo
 
+        # noinspection PyMethodParameters
         @classproperty
         def schema(cls) -> Dict[str, Any]:
             return {
                 "type": "number",
                 "minimum": 0,
                 "title": cls.pretty_name,
-                "default": timedelta(hours=1).total_seconds(),
+                "default": timedelta(days=1).total_seconds(),
             }
 
     @classmethod
@@ -77,7 +83,7 @@ class IntervalPostScheduler(PostScheduler, Configurable[State]):
     async def wait(self) -> AsyncIterable[None]:
         while True:
             async with self.state.read_lock() as state:
-                post_time = next_time(state.base, state.interval)
+                score_time = next_time(state.base, state.interval)
 
-            await asyncio.sleep(seconds_until(post_time))
+            await asyncio.sleep(seconds_until(score_time))
             yield

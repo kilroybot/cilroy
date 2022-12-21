@@ -2,6 +2,8 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from cilroy.models import SerializableModel
+from cilroy.retry import ExponentialBackoffRetrier
+from cilroy.schedulers import IntervalScheduler
 
 
 class FaceParams(SerializableModel):
@@ -18,21 +20,33 @@ class OfflineParams(SerializableModel):
     scrap_before: Optional[datetime] = None
     scrap_after: Optional[datetime] = None
     scrap_limit: Optional[int] = None
-    max_epochs: Optional[int] = None
-    batch_size: Optional[int] = None
 
 
 class OnlineParams(SerializableModel):
-    post_scheduler_type: str = "interval"
-    post_schedulers_params: Dict[str, Dict[str, Any]] = {}
-    score_scheduler_type: str = "interval"
-    score_schedulers_params: Dict[str, Dict[str, Any]] = {}
-    iterations: int = 1
-    batch_size: Optional[int] = None
+    post_scheduler_type: str = IntervalScheduler.category
+    post_schedulers_params: Dict[str, Dict[str, Any]] = {
+        "interval": {"interval": 3600},
+    }
+    score_scheduler_type: str = IntervalScheduler.category
+    score_schedulers_params: Dict[str, Dict[str, Any]] = {
+        "interval": {"interval": 86400},
+    }
+
+
+class AutosaveParams(SerializableModel):
+    scheduler_type: str = IntervalScheduler.category
+    schedulers_params: Dict[str, Dict[str, Any]] = {
+        "interval": {"interval": 3600},
+    }
 
 
 class FeedParams(SerializableModel):
     length: int = 100
+
+
+class RetryParams(SerializableModel):
+    retrier_type: str = ExponentialBackoffRetrier.category
+    retriers_params: Dict[str, Dict[str, Any]] = {}
 
 
 class Params(SerializableModel):
@@ -40,4 +54,6 @@ class Params(SerializableModel):
     module: ModuleParams = ModuleParams()
     offline: OfflineParams = OfflineParams()
     online: OnlineParams = OnlineParams()
+    autosave: AutosaveParams = AutosaveParams()
     feed: FeedParams = FeedParams()
+    retry: RetryParams = RetryParams()

@@ -1,6 +1,9 @@
 from datetime import datetime
-from typing import Any, Awaitable, Callable, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional, Type
 
+from cilroy.controller.state import State
+from cilroy.retry import Retrier, ExponentialBackoffRetrier
+from cilroy.schedulers import Scheduler, IntervalScheduler
 from kilroy_server_py_utils import (
     CategorizableBasedParameter,
     OptionalParameter,
@@ -8,19 +11,17 @@ from kilroy_server_py_utils import (
     classproperty,
 )
 
-from cilroy.controller.state import State
-from cilroy.posting import PostScheduler
-from cilroy.scoring import ScoreScheduler
-
 
 class ScrapBeforeParameter(OptionalParameter[State, str]):
-    async def _get(self, state: State) -> Optional[str]:
+    @classmethod
+    async def _get(cls, state: State) -> Optional[str]:
         if state.offline.scrap_before is None:
             return None
         return state.offline.scrap_before.isoformat()
 
+    @classmethod
     async def _set(
-        self, state: State, value: Optional[str]
+        cls, state: State, value: Optional[str]
     ) -> Callable[[], Awaitable]:
         original_value = state.offline.scrap_before
 
@@ -32,6 +33,7 @@ class ScrapBeforeParameter(OptionalParameter[State, str]):
         )
         return undo
 
+    # noinspection PyMethodParameters
     @classproperty
     def schema(cls) -> Dict[str, Any]:
         return {
@@ -43,13 +45,15 @@ class ScrapBeforeParameter(OptionalParameter[State, str]):
 
 
 class ScrapAfterParameter(OptionalParameter[State, str]):
-    async def _get(self, state: State) -> Optional[str]:
+    @classmethod
+    async def _get(cls, state: State) -> Optional[str]:
         if state.offline.scrap_after is None:
             return None
         return state.offline.scrap_after.isoformat()
 
+    @classmethod
     async def _set(
-        self, state: State, value: Optional[str]
+        cls, state: State, value: Optional[str]
     ) -> Callable[[], Awaitable]:
         original_value = state.offline.scrap_after
 
@@ -61,6 +65,7 @@ class ScrapAfterParameter(OptionalParameter[State, str]):
         )
         return undo
 
+    # noinspection PyMethodParameters
     @classproperty
     def schema(cls) -> Dict[str, Any]:
         return {
@@ -72,13 +77,15 @@ class ScrapAfterParameter(OptionalParameter[State, str]):
 
 
 class ScrapLimitParameter(OptionalParameter[State, int]):
-    async def _get(self, state: State) -> Optional[int]:
+    @classmethod
+    async def _get(cls, state: State) -> Optional[int]:
         if state.offline.scrap_limit is None:
             return None
         return state.offline.scrap_limit
 
+    @classmethod
     async def _set(
-        self, state: State, value: Optional[int]
+        cls, state: State, value: Optional[int]
     ) -> Callable[[], Awaitable]:
         original_value = state.offline.scrap_limit
 
@@ -88,6 +95,7 @@ class ScrapLimitParameter(OptionalParameter[State, int]):
         state.offline.scrap_limit = value if value is not None else None
         return undo
 
+    # noinspection PyMethodParameters
     @classproperty
     def schema(cls) -> Dict[str, Any]:
         return {
@@ -98,149 +106,87 @@ class ScrapLimitParameter(OptionalParameter[State, int]):
         }
 
 
-class MaxOfflineEpochsParameter(OptionalParameter[State, int]):
-    async def _get(self, state: State) -> Optional[int]:
-        if state.offline.max_epochs is None:
-            return None
-        return state.offline.max_epochs
-
-    async def _set(
-        self, state: State, value: Optional[int]
-    ) -> Callable[[], Awaitable]:
-        original_value = state.offline.max_epochs
-
-        async def undo():
-            state.offline.max_epochs = original_value
-
-        state.offline.max_epochs = value if value is not None else None
-        return undo
-
-    @classproperty
-    def pretty_name(cls) -> str:
-        return "Maximum Offline Epochs"
-
-    @classproperty
-    def schema(cls) -> Dict[str, Any]:
-        return {
-            "type": ["integer", "null"],
-            "minimum": 0,
-            "title": cls.pretty_name,
-            "default": None,
-        }
-
-
-class OfflineBatchSizeParameter(OptionalParameter[State, int]):
-    async def _get(self, state: State) -> Optional[int]:
-        if state.offline.batch_size is None:
-            return None
-        return state.offline.batch_size
-
-    async def _set(
-        self, state: State, value: Optional[int]
-    ) -> Callable[[], Awaitable]:
-        original_value = state.offline.batch_size
-
-        async def undo():
-            state.offline.batch_size = original_value
-
-        state.offline.batch_size = value if value is not None else None
-        return undo
-
-    @classproperty
-    def schema(cls) -> Dict[str, Any]:
-        return {
-            "type": ["integer", "null"],
-            "minimum": 1,
-            "title": cls.pretty_name,
-            "default": None,
-        }
-
-
-class PostSchedulerParameter(
-    CategorizableBasedParameter[State, PostScheduler]
-):
-    async def _get_categorizable(self, state: State) -> PostScheduler:
+class PostSchedulerParameter(CategorizableBasedParameter[State, Scheduler]):
+    @classmethod
+    async def _get_categorizable(cls, state: State) -> Scheduler:
         return state.online.post_scheduler
 
-    async def _set_categorizable(
-        self, state: State, value: PostScheduler
-    ) -> None:
+    @classmethod
+    async def _set_categorizable(cls, state: State, value: Scheduler) -> None:
         state.online.post_scheduler = value
 
-    async def _get_params(self, state: State, category: str) -> Dict[str, Any]:
-        return state.online.post_schedulers_params[category]
+    @classmethod
+    async def _get_params(cls, state: State, category: str) -> Dict[str, Any]:
+        return state.online.post_schedulers_params.get(category, {})
+
+    # noinspection PyMethodParameters
+    @classproperty
+    def default_categorizable(cls) -> Type[Scheduler]:
+        return IntervalScheduler
+
+    # noinspection PyMethodParameters
+    @classproperty
+    def default_config(cls) -> Optional[Dict[str, Any]]:
+        return {"interval": 3600}
 
 
-class ScoreSchedulerParameter(
-    CategorizableBasedParameter[State, ScoreScheduler]
-):
-    async def _get_categorizable(self, state: State) -> ScoreScheduler:
+class ScoreSchedulerParameter(CategorizableBasedParameter[State, Scheduler]):
+    @classmethod
+    async def _get_categorizable(cls, state: State) -> Scheduler:
         return state.online.score_scheduler
 
-    async def _set_categorizable(
-        self, state: State, value: ScoreScheduler
-    ) -> None:
+    @classmethod
+    async def _set_categorizable(cls, state: State, value: Scheduler) -> None:
         state.online.score_scheduler = value
 
-    async def _get_params(self, state: State, category: str) -> Dict[str, Any]:
-        return state.online.score_schedulers_params[category]
+    @classmethod
+    async def _get_params(cls, state: State, category: str) -> Dict[str, Any]:
+        return state.online.score_schedulers_params.get(category, {})
 
-
-class OnlineIterationsParameter(Parameter[State, int]):
-    async def _get(self, state: State) -> int:
-        return state.online.iterations
-
-    async def _set(self, state: State, value: int) -> Callable[[], Awaitable]:
-        original_value = state.online.iterations
-
-        async def undo():
-            state.online.iterations = original_value
-
-        state.online.iterations = value
-        return undo
-
+    # noinspection PyMethodParameters
     @classproperty
-    def schema(cls) -> Dict[str, Any]:
-        return {
-            "type": "integer",
-            "minimum": 0,
-            "title": cls.pretty_name,
-            "default": 1,
-        }
+    def default_categorizable(cls) -> Type[Scheduler]:
+        return IntervalScheduler
 
-
-class OnlineBatchSizeParameter(OptionalParameter[State, int]):
-    async def _get(self, state: State) -> Optional[int]:
-        if state.online.batch_size is None:
-            return None
-        return state.online.batch_size
-
-    async def _set(
-        self, state: State, value: Optional[int]
-    ) -> Callable[[], Awaitable]:
-        original_value = state.online.batch_size
-
-        async def undo():
-            state.online.batch_size = original_value
-
-        state.online.batch_size = value if value is not None else None
-        return undo
-
+    # noinspection PyMethodParameters
     @classproperty
-    def schema(cls) -> Dict[str, Any]:
-        return {
-            "type": ["integer", "null"],
-            "minimum": 1,
-            "title": cls.pretty_name,
-            "default": None,
-        }
+    def default_config(cls) -> Optional[Dict[str, Any]]:
+        return {"interval": 86400}
+
+
+class AutosaveSchedulerParameter(
+    CategorizableBasedParameter[State, Scheduler]
+):
+    @classmethod
+    async def _get_categorizable(cls, state: State) -> Scheduler:
+        return state.autosave.scheduler
+
+    @classmethod
+    async def _set_categorizable(cls, state: State, value: Scheduler) -> None:
+        state.autosave.scheduler = value
+
+    @classmethod
+    async def _get_params(cls, state: State, category: str) -> Dict[str, Any]:
+        return state.autosave.schedulers_params.get(category, {})
+
+    # noinspection PyMethodParameters
+    @classproperty
+    def default_categorizable(cls) -> Type[Scheduler]:
+        return IntervalScheduler
+
+    # noinspection PyMethodParameters
+    @classproperty
+    def default_config(cls) -> Optional[Dict[str, Any]]:
+        return {"interval": 3600}
 
 
 class FeedLengthParameter(Parameter[State, int]):
-    async def _get(self, state: State) -> int:
+    @classmethod
+    async def _get(cls, state: State) -> int:
         return state.feed.length
 
-    async def _set(self, state: State, value: int) -> Callable[[], Awaitable]:
+    @classmethod
+    async def _set(cls, state: State, value: int) -> Callable[[], Awaitable]:
         original_value = state.feed.length
         original_feed = state.feed.feed
 
@@ -252,6 +198,7 @@ class FeedLengthParameter(Parameter[State, int]):
         state.feed.feed = state.feed.feed[-value:]
         return undo
 
+    # noinspection PyMethodParameters
     @classproperty
     def schema(cls) -> Dict[str, Any]:
         return {
@@ -260,3 +207,22 @@ class FeedLengthParameter(Parameter[State, int]):
             "title": cls.pretty_name,
             "default": 100,
         }
+
+
+class RetrierParameter(CategorizableBasedParameter[State, Retrier]):
+    @classmethod
+    async def _get_categorizable(cls, state: State) -> Retrier:
+        return state.retry.retrier
+
+    @classmethod
+    async def _set_categorizable(cls, state: State, value: Retrier) -> None:
+        state.retry.retrier = value
+
+    @classmethod
+    async def _get_params(cls, state: State, category: str) -> Dict[str, Any]:
+        return state.retry.retriers_params.get(category, {})
+
+    # noinspection PyMethodParameters
+    @classproperty
+    def default_categorizable(cls) -> Type[Retrier]:
+        return ExponentialBackoffRetrier
