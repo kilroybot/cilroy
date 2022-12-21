@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "cilroy"
-version = "0.5.0"
+version = "0.6.0"
 description = "kilroy controller 🎛️"
 readme = "README.md"
 authors = ["kilroy <kilroymail@pm.me>"]
@@ -17,12 +17,12 @@ typer = { version = "^0.6", extras = ["all"] }
 betterproto = { version = "^2.0.0b5", allow-prereleases = true }
 pyhumps = "^3.7"
 jsonschema = "^4.7"
-aiostream = "^0.4"
 platformdirs = "^2.5"
 python-dateutil = "^2.8"
-kilroy-server-py-utils = "~0.3"
-kilroy-face-client-py-sdk = "~0.7"
-kilroy-module-client-py-sdk = "~0.8"
+croniter = "^1.3"
+kilroy-server-py-utils = "~0.4"
+kilroy-face-client-py-sdk = "~0.8"
+kilroy-module-client-py-sdk = "~0.9"
 
 [tool.poetry.group.poe.dependencies]
 poethepoet = "^0.16"

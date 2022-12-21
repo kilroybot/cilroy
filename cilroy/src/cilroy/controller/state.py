@@ -2,17 +2,16 @@ import asyncio
 from asyncio import Lock
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, MutableMapping, Optional, Tuple
+from typing import Any, Dict, List, MutableMapping, Optional
 from uuid import UUID
 
+from cilroy.post import PostData
+from cilroy.retry import Retrier
+from cilroy.schedulers import Scheduler
+from cilroy.status import TrainingStatus
 from kilroy_face_client_py_sdk import FaceService
 from kilroy_module_client_py_sdk import MetricData, ModuleService
 from kilroy_server_py_utils import Observable
-
-from cilroy.post import PostData
-from cilroy.posting import PostScheduler
-from cilroy.scoring import ScoreScheduler
-from cilroy.status import TrainingStatus
 
 
 @dataclass
@@ -33,20 +32,15 @@ class OfflineState:
     scrap_before: Optional[datetime]
     scrap_after: Optional[datetime]
     scrap_limit: Optional[int]
-    max_epochs: Optional[int]
-    batch_size: Optional[int]
-    posts_cache: MutableMapping[str, Tuple[Dict, float]]
 
 
 @dataclass
 class OnlineState:
-    ids_cache: MutableMapping[UUID, UUID]
-    post_scheduler: PostScheduler
+    cache: MutableMapping[UUID, Dict[str, Any]]
+    post_scheduler: Scheduler
     post_schedulers_params: Dict[str, Dict[str, Any]]
-    score_scheduler: ScoreScheduler
+    score_scheduler: Scheduler
     score_schedulers_params: Dict[str, Dict[str, Any]]
-    iterations: int
-    batch_size: Optional[int]
     lock: Lock
 
 
@@ -58,11 +52,31 @@ class FeedState:
 
 
 @dataclass
+class RetryState:
+    retrier: Retrier
+    retriers_params: Dict[str, Dict[str, Any]]
+
+
+@dataclass
+class TrainingState:
+    status: Observable[TrainingStatus]
+    task: Optional[asyncio.Task]
+
+
+@dataclass
+class AutosaveState:
+    scheduler: Scheduler
+    schedulers_params: Dict[str, Dict[str, Any]]
+    task: asyncio.Task
+
+
+@dataclass
 class State:
     face: FaceState
     module: ModuleState
     offline: OfflineState
     online: OnlineState
-    training_task: Optional[asyncio.Task]
-    training_status: Observable[TrainingStatus]
+    training: TrainingState
+    autosave: AutosaveState
     feed: FeedState
+    retry: RetryState

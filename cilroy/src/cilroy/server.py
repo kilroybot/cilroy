@@ -3,17 +3,16 @@ import logging
 from grpclib.events import RecvRequest
 from grpclib.server import Server
 
-from cilroy.controller import CilroyController
 from cilroy.service import CilroyService
 
 
 class CilroyServer:
     def __init__(
         self,
-        controller: CilroyController,
+        service: CilroyService,
         logger: logging.Logger = logging.getLogger(__name__),
     ) -> None:
-        self._service = CilroyService(controller)
+        self._service = service
         self._logger = logger
 
     async def _on_request(self, event: RecvRequest) -> None:

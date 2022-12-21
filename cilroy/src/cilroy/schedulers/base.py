@@ -1,22 +1,15 @@
 from abc import ABC, abstractmethod
-from typing import (
-    AsyncIterable,
-    Awaitable,
-    Callable,
-    Collection,
-    Dict,
-    Set,
-)
-from uuid import UUID
+from typing import AsyncIterable
 
 from kilroy_server_py_utils import Categorizable, classproperty, normalize
 
 
-class ScoreScheduler(Categorizable, ABC):
+class Scheduler(Categorizable, ABC):
+    # noinspection PyMethodParameters
     @classproperty
     def category(cls) -> str:
         name: str = cls.__name__
-        return normalize(name.removesuffix("ScoreScheduler"))
+        return normalize(name.removesuffix("Scheduler"))
 
     @abstractmethod
     def wait(self) -> AsyncIterable[None]:

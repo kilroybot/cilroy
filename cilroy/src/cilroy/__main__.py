@@ -17,6 +17,7 @@ from cilroy import log
 from cilroy.config import Config, get_config
 from cilroy.controller import CilroyController
 from cilroy.server import CilroyServer
+from cilroy.service import CilroyService
 
 cli = typer.Typer()  # this is actually callable and thus can be an entry point
 
@@ -70,11 +71,16 @@ async def load_or_init(controller: CilroyController, state_dir: Path) -> None:
 async def run(config: Config) -> None:
     await attach_signal_handlers()
 
-    face = await CilroyController.build(**config.controller.dict())
-    server = CilroyServer(face, logger)
+    controller = await CilroyController.build(
+        state_directory=config.state_directory, **config.controller.dict()
+    )
+    service = CilroyService(controller, config.state_directory)
+    server = CilroyServer(service, logger)
 
     server_task = asyncio.create_task(server.run(**config.server.dict()))
-    init_task = asyncio.create_task(load_or_init(face, config.state_directory))
+    init_task = asyncio.create_task(
+        load_or_init(controller, config.state_directory)
+    )
 
     tasks = [server_task, init_task]
 
@@ -104,10 +110,10 @@ async def run(config: Config) -> None:
         and init_task.exception() is None
     ):
         logger.info("Saving state...")
-        await face.save(config.state_directory)
+        await controller.save(config.state_directory)
 
         logger.info("Cleaning up...")
-        await face.cleanup()
+        await controller.cleanup()
 
 
 @cli.command()

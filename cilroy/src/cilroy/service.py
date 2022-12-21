@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from typing import AsyncIterator, Dict, Tuple
 
 import aiostream
@@ -183,9 +184,24 @@ class CilroyServiceBase(ServiceBase):
     ) -> "ResetModuleResponse":
         raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
+    async def save_controller(
+        self, save_controller_request: "SaveControllerRequest"
+    ) -> "SaveControllerResponse":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def save_face(
+        self, save_face_request: "SaveFaceRequest"
+    ) -> "SaveFaceResponse":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
+    async def save_module(
+        self, save_module_request: "SaveModuleRequest"
+    ) -> "SaveModuleResponse":
+        raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
+
     async def get_feed(
         self, get_feed_request: "GetFeedRequest"
-    ) -> "GetFeedResponse":
+    ) -> AsyncIterator["GetFeedResponse"]:
         raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
     async def watch_feed(
@@ -497,13 +513,39 @@ class CilroyServiceBase(ServiceBase):
         response = await self.reset_module(request)
         await stream.send_message(response)
 
-    async def __rpc_get_feed(
+    async def __rpc_save_controller(
         self,
-        stream: "grpclib.server.Stream[GetFeedRequest, GetFeedResponse]",
+        stream: "grpclib.server.Stream[SaveControllerRequest, SaveControllerResponse]",
     ) -> None:
         request = await stream.recv_message()
-        response = await self.get_feed(request)
+        response = await self.save_controller(request)
         await stream.send_message(response)
+
+    async def __rpc_save_face(
+        self,
+        stream: "grpclib.server.Stream[SaveFaceRequest, SaveFaceResponse]",
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.save_face(request)
+        await stream.send_message(response)
+
+    async def __rpc_save_module(
+        self,
+        stream: "grpclib.server.Stream[SaveModuleRequest, SaveModuleResponse]",
+    ) -> None:
+        request = await stream.recv_message()
+        response = await self.save_module(request)
+        await stream.send_message(response)
+
+    async def __rpc_get_feed(
+        self, stream: "grpclib.server.Stream[GetFeedRequest, GetFeedResponse]"
+    ) -> None:
+        request = await stream.recv_message()
+        await self._call_rpc_handler_server_stream(
+            self.get_feed,
+            stream,
+            request,
+        )
 
     async def __rpc_watch_feed(
         self,
@@ -733,9 +775,27 @@ class CilroyServiceBase(ServiceBase):
                 ResetModuleRequest,
                 ResetModuleResponse,
             ),
+            "/kilroy.cilroy.v1alpha.CilroyService/SaveController": grpclib.const.Handler(
+                self.__rpc_save_controller,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                SaveControllerRequest,
+                SaveControllerResponse,
+            ),
+            "/kilroy.cilroy.v1alpha.CilroyService/SaveFace": grpclib.const.Handler(
+                self.__rpc_save_face,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                SaveFaceRequest,
+                SaveFaceResponse,
+            ),
+            "/kilroy.cilroy.v1alpha.CilroyService/SaveModule": grpclib.const.Handler(
+                self.__rpc_save_module,
+                grpclib.const.Cardinality.UNARY_UNARY,
+                SaveModuleRequest,
+                SaveModuleResponse,
+            ),
             "/kilroy.cilroy.v1alpha.CilroyService/GetFeed": grpclib.const.Handler(
                 self.__rpc_get_feed,
-                grpclib.const.Cardinality.UNARY_UNARY,
+                grpclib.const.Cardinality.UNARY_STREAM,
                 GetFeedRequest,
                 GetFeedResponse,
             ),
@@ -755,9 +815,12 @@ class CilroyServiceBase(ServiceBase):
 
 
 class CilroyService(CilroyServiceBase):
-    def __init__(self, controller: CilroyController) -> None:
+    def __init__(
+        self, controller: CilroyController, state_directory: Path
+    ) -> None:
         super().__init__()
         self._controller = controller
+        self._state_directory = state_directory
 
     async def get_face_metadata(
         self, get_face_metadata_request: "GetFaceMetadataRequest"
@@ -977,8 +1040,8 @@ class CilroyService(CilroyServiceBase):
                 MetricConfig(
                     id=metric.id,
                     label=metric.label,
-                    group=metric.group,
                     config=json.dumps(metric.config),
+                    tags=metric.tags,
                 )
                 for metric in metrics
             ]
@@ -1070,7 +1133,7 @@ class CilroyService(CilroyServiceBase):
     async def reset_controller(
         self, reset_controller_request: "ResetControllerRequest"
     ) -> "ResetControllerResponse":
-        await self._controller.init()
+        await self._controller.reset_self()
         return ResetControllerResponse()
 
     async def reset_face(
@@ -1085,37 +1148,44 @@ class CilroyService(CilroyServiceBase):
         await self._controller.reset_module()
         return ResetModuleResponse()
 
+    async def save_controller(
+        self, save_controller_request: "SaveControllerRequest"
+    ) -> "SaveControllerResponse":
+        await self._controller.save(self._state_directory)
+        return SaveControllerResponse()
+
+    async def save_face(
+        self, save_face_request: "SaveFaceRequest"
+    ) -> "SaveFaceResponse":
+        await self._controller.save_face()
+        return SaveFaceResponse()
+
+    async def save_module(
+        self, save_module_request: "SaveModuleRequest"
+    ) -> "SaveModuleResponse":
+        await self._controller.save_module()
+        return SaveModuleResponse()
+
     async def get_feed(
         self, get_feed_request: "GetFeedRequest"
-    ) -> "GetFeedResponse":
-        feed = await self._controller.get_feed()
-        return GetFeedResponse(
-            posts=[
-                Post(
-                    id=str(post.id),
-                    url=post.url,
-                    content=json.dumps(post.content),
-                    created_at=post.created_at.isoformat().replace(
-                        "+00:00", "Z"
-                    ),
-                )
-                for post in feed
-            ]
-        )
+    ) -> AsyncIterator["GetFeedResponse"]:
+        async for post in self._controller.get_feed():
+            yield GetFeedResponse(
+                id=str(post.id),
+                url=post.url,
+                content=json.dumps(post.content),
+                created_at=post.created_at.isoformat().replace("+00:00", "Z"),
+            )
 
     async def watch_feed(
         self, watch_feed_request: "WatchFeedRequest"
     ) -> AsyncIterator["WatchFeedResponse"]:
         async for post in self._controller.watch_feed():
             yield WatchFeedResponse(
-                post=Post(
-                    id=str(post.id),
-                    url=post.url,
-                    content=json.dumps(post.content),
-                    created_at=post.created_at.isoformat().replace(
-                        "+00:00", "Z"
-                    ),
-                )
+                id=str(post.id),
+                url=post.url,
+                content=json.dumps(post.content),
+                created_at=post.created_at.isoformat().replace("+00:00", "Z"),
             )
 
     async def generate_posts(

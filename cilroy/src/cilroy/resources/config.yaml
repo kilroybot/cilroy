@@ -1,9 +1,16 @@
 # default configuration
 controller:
-  face_host: localhost
-  face_port: 10000
-  module_host: localhost
-  module_port: 11000
-server:
-  host: "0.0.0.0"
-  port: 12000
+  online:
+    postSchedulerType: "interval"
+    postSchedulersParams:
+      interval:
+        interval: 3600
+    scoreSchedulerType: "interval"
+    scoreSchedulersParams:
+      interval:
+        interval: 86400
+  autosave:
+    schedulerType: "interval"
+    schedulersParams:
+      interval:
+        interval: 3600
