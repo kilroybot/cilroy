@@ -23,6 +23,18 @@ from uuid import UUID
 
 from aiostream.aiter_utils import anext
 from grpclib.client import Channel
+from kilroy_face_client_py_sdk import FaceService
+from kilroy_module_client_py_sdk import MetricConfig, MetricData, ModuleService
+from kilroy_server_py_utils import (
+    Configurable,
+    JSONSchema,
+    Observable,
+    Parameter,
+    ReadOnlyObservableWrapper,
+    ReadableObservable,
+    classproperty,
+    Configuration,
+)
 
 from cilroy.controller.parameters import (
     PostSchedulerParameter,
@@ -61,18 +73,6 @@ from cilroy.post import PostData
 from cilroy.retry import Retrier, SimpleRetrier
 from cilroy.schedulers import Scheduler
 from cilroy.status import TrainingStatus
-from kilroy_face_client_py_sdk import FaceService
-from kilroy_module_client_py_sdk import MetricConfig, MetricData, ModuleService
-from kilroy_server_py_utils import (
-    Configurable,
-    JSONSchema,
-    Observable,
-    Parameter,
-    ReadOnlyObservableWrapper,
-    ReadableObservable,
-    classproperty,
-    Configuration,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -940,14 +940,29 @@ class CilroyController(CilroyControllerDelegatedBase):
                 async with self.state.write_lock() as state:
                     value = state.online.cache.pop(key)
 
-                score = await __score(key)
+                try:
+                    score = await __score(key)
+                except Exception as e:
+                    logger.warning(
+                        f"Online training: "
+                        f"Failed to score post: {str(key)}. Skipping...",
+                        exc_info=e,
+                    )
+                    continue
+
                 yield value["content"], value["metadata"], score
 
         async for _ in scheduler.wait():
             async with lock:
                 logger.info("Online training: Fitting scores...")
-                await self._train_online_fit(__get_data())
-                logger.info("Online training: Scores fitted.")
+                try:
+                    await self._train_online_fit(__get_data())
+                    logger.info("Online training: Scores fitted.")
+                except Exception as e:
+                    logger.warning(
+                        "Online training: Error while fitting scores.",
+                        exc_info=e,
+                    )
 
     async def _train_online(self) -> None:
         logger.info("Online training started.")
